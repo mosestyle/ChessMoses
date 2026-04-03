@@ -51,6 +51,11 @@ type AnalyzeProgress = {
   total: number;
 };
 
+type SquareOverlayPosition = {
+  left: number;
+  top: number;
+};
+
 function createStockfishWorker(): { worker: Worker; blobUrl: string } {
   const workerScript =
     "self.window = self;\n" +
@@ -144,9 +149,40 @@ function buildEvalAreaPath(values: number[], width: number, height: number) {
   return line + ' L ' + width + ' ' + height + ' L 0 ' + height + ' Z';
 }
 
+function getSquareOverlayPosition(
+  square: string,
+  orientation: Orientation,
+  boardSize: number
+): SquareOverlayPosition | null {
+  if (!square || square.length !== 2) return null;
+
+  const files = 'abcdefgh';
+  const file = square[0];
+  const rank = Number(square[1]);
+
+  const fileIndex = files.indexOf(file);
+  if (fileIndex === -1 || rank < 1 || rank > 8) return null;
+
+  const squareSize = boardSize / 8;
+
+  let col = fileIndex;
+  let row = 8 - rank;
+
+  if (orientation === 'black') {
+    col = 7 - fileIndex;
+    row = rank - 1;
+  }
+
+  return {
+    left: col * squareSize + squareSize * 0.68,
+    top: row * squareSize + squareSize * 0.06
+  };
+}
+
 export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const workerUrlRef = useRef<string | null>(null);
+  const boardWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
   const [input, setInput] = useState<string>(DEMO_PGN);
@@ -158,6 +194,7 @@ export default function App() {
   const [fenResult, setFenResult] = useState<EnginePositionResult | null>(null);
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
+  const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
 
   useEffect(() => {
     const setup = createStockfishWorker();
@@ -168,6 +205,22 @@ export default function App() {
     return () => {
       if (workerRef.current) workerRef.current.terminate();
       if (workerUrlRef.current) URL.revokeObjectURL(workerUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateBoardSize = () => {
+      if (boardWrapRef.current) {
+        const width = boardWrapRef.current.offsetWidth;
+        if (width > 0) setBoardPixelSize(width);
+      }
+    };
+
+    updateBoardSize();
+    window.addEventListener('resize', updateBoardSize);
+
+    return () => {
+      window.removeEventListener('resize', updateBoardSize);
     };
   }, []);
 
@@ -242,6 +295,13 @@ export default function App() {
     const y = graphHeight - normalized * graphHeight;
     return { x, y, value };
   }, [moves, currentPly]);
+
+  const moveSquareIconPosition = useMemo(() => {
+    if (!selectedMove) return null;
+    const lastMove = getLastMoveSquares(selectedMove.uci);
+    if (!lastMove) return null;
+    return getSquareOverlayPosition(lastMove.to, orientation, boardPixelSize);
+  }, [selectedMove, orientation, boardPixelSize]);
 
   async function evaluateFen(fen: string, depth: number, multiPv: number): Promise<EnginePositionResult> {
     return new Promise((resolve, reject) => {
@@ -365,8 +425,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2B with eval graph, selected point marker, board badge,
-            accuracy bar, and more polished move summary.
+            Version 2C step 1 with move-classification icon on the actual destination square.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -502,13 +561,7 @@ export default function App() {
           ) : null}
 
           <div className="board-stack">
-            {selectedMove && selectedMoveStyle ? (
-              <div className="board-badge" style={{ backgroundColor: selectedMoveStyle.color }}>
-                {selectedMoveStyle.icon} {selectedMove.label}
-              </div>
-            ) : null}
-
-            <div className="board-wrap">
+            <div className="board-wrap" ref={boardWrapRef}>
               <Chessboard
                 id="analysis-board"
                 position={currentFen}
@@ -517,6 +570,20 @@ export default function App() {
                 boardOrientation={orientation}
                 customSquareStyles={customSquareStyles}
               />
+
+              {selectedMove && selectedMoveStyle && moveSquareIconPosition ? (
+                <div
+                  className="square-annotation-icon"
+                  style={{
+                    left: moveSquareIconPosition.left + 'px',
+                    top: moveSquareIconPosition.top + 'px',
+                    backgroundColor: selectedMoveStyle.color
+                  }}
+                  title={selectedMove.label}
+                >
+                  {selectedMoveStyle.icon}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -552,16 +619,10 @@ export default function App() {
               <div className="accuracy-strip-card">
                 <div className="accuracy-strip-title">Accuracies</div>
                 <div className="accuracy-strip">
-                  <div
-                    className="accuracy-left"
-                    style={{ width: summary.white.accuracy + '%' }}
-                  >
+                  <div className="accuracy-left" style={{ width: summary.white.accuracy + '%' }}>
                     {summary.white.accuracy}%
                   </div>
-                  <div
-                    className="accuracy-right"
-                    style={{ width: summary.black.accuracy + '%' }}
-                  >
+                  <div className="accuracy-right" style={{ width: summary.black.accuracy + '%' }}>
                     {summary.black.accuracy}%
                   </div>
                 </div>
