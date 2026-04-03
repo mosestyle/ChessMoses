@@ -241,6 +241,22 @@ textarea {
 .board-wrap > div {
   width: 100% !important;
 }
+.board-arrow-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 12;
+  pointer-events: none;
+}
+.board-arrow-line {
+  stroke: rgba(94, 225, 115, 0.95);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+.board-arrow-head {
+  fill: rgba(94, 225, 115, 0.95);
+}
 .square-annotation-icon {
   position: absolute;
   z-index: 20;
