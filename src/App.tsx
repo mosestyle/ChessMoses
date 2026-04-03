@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import stockfishWorkerUrl from 'stockfish.js/src/stockfish.js?url';
 import {
   buildMoveTimelineFromPgn,
   buildReport,
@@ -36,6 +35,19 @@ const LABELS = [
   'Theory'
 ] as const;
 
+function createStockfishWorker() {
+  const workerScript = `
+    self.window = self;
+    self.global = self;
+    self.process = { env: {} };
+    importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
+  `;
+  const blob = new Blob([workerScript], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  const worker = new Worker(blobUrl);
+  return { worker, blobUrl };
+}
+
 export default function App() {
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
   const [input, setInput] = useState(DEMO_PGN);
@@ -65,16 +77,21 @@ export default function App() {
 
   async function evaluateFen(fen: string, depth = 14): Promise<EnginePositionResult> {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(stockfishWorkerUrl);
+      const { worker, blobUrl } = createStockfishWorker();
       let done = false;
       let bestMove: string | null = null;
       let currentEval: number | null = null;
       const topLines: EnginePositionResult['topLines'] = [];
 
+      const cleanup = () => {
+        worker.terminate();
+        URL.revokeObjectURL(blobUrl);
+      };
+
       const finish = () => {
         if (done) return;
         done = true;
-        worker.terminate();
+        cleanup();
         resolve({
           fen,
           bestMove,
@@ -87,10 +104,10 @@ export default function App() {
         const line = String(event.data);
 
         if (line.startsWith('info ')) {
-          const move = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/)?.[1];
-          const cp = line.match(/ score cp (-?\d+)/)?.[1];
-          const mate = line.match(/ score mate (-?\d+)/)?.[1];
-          const mpv = Number(line.match(/ multipv (\d+)/)?.[1] ?? '1');
+          const move = line.match(/ pv\\s+([a-h][1-8][a-h][1-8][qrbn]?)/)?.[1];
+          const cp = line.match(/ score cp (-?\\d+)/)?.[1];
+          const mate = line.match(/ score mate (-?\\d+)/)?.[1];
+          const mpv = Number(line.match(/ multipv (\\d+)/)?.[1] ?? '1');
 
           if (move) {
             const entry = {
@@ -118,14 +135,14 @@ export default function App() {
       };
 
       worker.onerror = () => {
-        worker.terminate();
+        cleanup();
         reject(new Error('Stockfish worker failed to load.'));
       };
 
       worker.postMessage('uci');
       worker.postMessage('setoption name MultiPV value 3');
-      worker.postMessage(`position fen ${fen}`);
-      worker.postMessage(`go depth ${depth}`);
+      worker.postMessage(\`position fen \${fen}\`);
+      worker.postMessage(\`go depth \${depth}\`);
 
       setTimeout(() => {
         if (!done) finish();
@@ -145,7 +162,7 @@ export default function App() {
         setStatus('Analyzing FEN...');
         const result = await evaluateFen(parseFen(input), 16);
         setFenResult(result);
-        setStatus(`Best move ${result.bestMove ?? '—'} | Eval ${result.bestEvalCp ?? '—'}`);
+        setStatus(\`Best move \${result.bestMove ?? '—'} | Eval \${result.bestEvalCp ?? '—'}\`);
         setState('done');
         return;
       }
@@ -160,13 +177,13 @@ export default function App() {
       const engineResults: EnginePositionResult[] = [];
 
       for (let i = 0; i < fens.length; i++) {
-        setStatus(`Analyzing ${i + 1}/${fens.length}`);
+        setStatus(\`Analyzing \${i + 1}/\${fens.length}\`);
         engineResults.push(await evaluateFen(fens[i], 13));
       }
 
       const analyzed = mergeAnalysis(input, engineResults);
       setMoves(analyzed);
-      setStatus(`Done. ${analyzed.length} plies analyzed.`);
+      setStatus(\`Done. \${analyzed.length} plies analyzed.\`);
       setState('done');
     } catch (e) {
       setState('error');
