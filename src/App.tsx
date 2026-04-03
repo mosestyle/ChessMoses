@@ -88,25 +88,25 @@ function getHeadersFromPgn(pgn: string): PgnHeaders {
 function getMoveColors(label: MoveLabel) {
   switch (label) {
     case 'Brilliant':
-      return { icon: '!!', color: '#19d3da', text: '#19d3da' };
+      return { icon: '‼', color: '#19d3da', text: '#19d3da' };
     case 'Critical':
       return { icon: '!', color: '#7aa2ff', text: '#7aa2ff' };
     case 'Best':
       return { icon: '★', color: '#8bc34a', text: '#8bc34a' };
     case 'Excellent':
-      return { icon: '👍', color: '#7ed957', text: '#7ed957' };
+      return { icon: '✓', color: '#7ed957', text: '#7ed957' };
     case 'Good':
       return { icon: '✓', color: '#a9d36e', text: '#a9d36e' };
     case 'Okay':
-      return { icon: '✓', color: '#c7d36f', text: '#c7d36f' };
+      return { icon: '•', color: '#c7d36f', text: '#c7d36f' };
     case 'Inaccuracy':
-      return { icon: '?!', color: '#f4c542', text: '#f4c542' };
+      return { icon: '△', color: '#f4c542', text: '#f4c542' };
     case 'Mistake':
       return { icon: '?', color: '#ff9f43', text: '#ff9f43' };
     case 'Blunder':
-      return { icon: '??', color: '#ff4d4f', text: '#ff4d4f' };
+      return { icon: '✖', color: '#ff4d4f', text: '#ff4d4f' };
     case 'Theory':
-      return { icon: '📖', color: '#d1b08c', text: '#d1b08c' };
+      return { icon: 'T', color: '#d1b08c', text: '#d1b08c' };
     default:
       return { icon: '•', color: '#cccccc', text: '#cccccc' };
   }
@@ -174,8 +174,8 @@ function getSquareOverlayPosition(
   }
 
   return {
-    left: col * squareSize + squareSize * 0.68,
-    top: row * squareSize + squareSize * 0.06
+    left: col * squareSize + squareSize * 0.73,
+    top: row * squareSize + squareSize * 0.08
   };
 }
 
@@ -206,6 +206,33 @@ function getSquareCenter(
   return {
     x: col * squareSize + squareSize / 2,
     y: row * squareSize + squareSize / 2
+  };
+}
+
+function shortenArrow(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  startCut: number,
+  endCut: number
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (!length || length <= startCut + endCut) {
+    return { x1, y1, x2, y2 };
+  }
+
+  const ux = dx / length;
+  const uy = dy / length;
+
+  return {
+    x1: x1 + ux * startCut,
+    y1: y1 + uy * startCut,
+    x2: x2 - ux * endCut,
+    y2: y2 - uy * endCut
   };
 }
 
@@ -292,8 +319,8 @@ export default function App() {
   const customSquareStyles = useMemo(() => {
     if (!lastMoveSquares) return {};
     return {
-      [lastMoveSquares.from]: { backgroundColor: 'rgba(255, 196, 0, 0.35)' },
-      [lastMoveSquares.to]: { backgroundColor: 'rgba(255, 196, 0, 0.55)' }
+      [lastMoveSquares.from]: { backgroundColor: 'rgba(255, 196, 0, 0.32)' },
+      [lastMoveSquares.to]: { backgroundColor: 'rgba(255, 196, 0, 0.50)' }
     };
   }, [lastMoveSquares]);
 
@@ -345,13 +372,23 @@ export default function App() {
 
     if (!fromCenter || !toCenter) return null;
 
+    const squareSize = boardPixelSize / 8;
+    const shortened = shortenArrow(
+      fromCenter.x,
+      fromCenter.y,
+      toCenter.x,
+      toCenter.y,
+      squareSize * 0.22,
+      squareSize * 0.28
+    );
+
     return {
       from,
       to,
-      x1: fromCenter.x,
-      y1: fromCenter.y,
-      x2: toCenter.x,
-      y2: toCenter.y
+      x1: shortened.x1,
+      y1: shortened.y1,
+      x2: shortened.x2,
+      y2: shortened.y2
     };
   }, [selectedMove, orientation, boardPixelSize]);
 
@@ -477,7 +514,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2C with move-classification icon on the square and best-move arrow on the board.
+            Version 2C with smaller board icons and a shorter, more transparent best-move arrow.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -632,14 +669,14 @@ export default function App() {
                   <defs>
                     <marker
                       id="bestMoveArrowHead"
-                      markerWidth="10"
-                      markerHeight="10"
-                      refX="7"
+                      markerWidth="8"
+                      markerHeight="8"
+                      refX="6"
                       refY="3"
                       orient="auto"
-                      markerUnits="strokeWidth"
+                      markerUnits="userSpaceOnUse"
                     >
-                      <path d="M0,0 L0,6 L8,3 z" className="board-arrow-head" />
+                      <path d="M0,0 L0,6 L6,3 z" className="board-arrow-head" />
                     </marker>
                   </defs>
 
