@@ -35,27 +35,28 @@ const LABELS = [
   'Theory'
 ] as const;
 
-function createStockfishWorker() {
-  const workerScript = `
-    self.window = self;
-    self.global = self;
-    self.process = { env: {} };
-    importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
-  `;
+function createStockfishWorker(): { worker: Worker; blobUrl: string } {
+  const workerScript =
+    "self.window = self;\n" +
+    "self.global = self;\n" +
+    "self.process = { env: {} };\n" +
+    "importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');\n";
+
   const blob = new Blob([workerScript], { type: 'application/javascript' });
   const blobUrl = URL.createObjectURL(blob);
   const worker = new Worker(blobUrl);
+
   return { worker, blobUrl };
 }
 
 export default function App() {
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
-  const [input, setInput] = useState(DEMO_PGN);
+  const [input, setInput] = useState<string>(DEMO_PGN);
   const [state, setState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string>('');
   const [moves, setMoves] = useState<AnalyzedMove[]>([]);
-  const [currentPly, setCurrentPly] = useState(0);
-  const [status, setStatus] = useState('Ready');
+  const [currentPly, setCurrentPly] = useState<number>(0);
+  const [status, setStatus] = useState<string>('Ready');
   const [fenResult, setFenResult] = useState<EnginePositionResult | null>(null);
 
   const currentFen = useMemo(() => {
@@ -67,7 +68,10 @@ export default function App() {
       }
     }
 
-    if (!moves.length) return new Chess().fen();
+    if (!moves.length) {
+      return new Chess().fen();
+    }
+
     return currentPly === 0 ? moves[0].fenBefore : moves[currentPly - 1].fenAfter;
   }, [mode, input, moves, currentPly]);
 
@@ -77,7 +81,10 @@ export default function App() {
 
   async function evaluateFen(fen: string, depth = 14): Promise<EnginePositionResult> {
     return new Promise((resolve, reject) => {
-      const { worker, blobUrl } = createStockfishWorker();
+      const workerSetup = createStockfishWorker();
+      const worker = workerSetup.worker;
+      const blobUrl = workerSetup.blobUrl;
+
       let done = false;
       let bestMove: string | null = null;
       let currentEval: number | null = null;
@@ -100,36 +107,42 @@ export default function App() {
         });
       };
 
-      worker.onmessage = (event) => {
+      worker.onmessage = (event: MessageEvent) => {
         const line = String(event.data);
 
         if (line.startsWith('info ')) {
-          const move = line.match(/ pv\\s+([a-h][1-8][a-h][1-8][qrbn]?)/)?.[1];
-          const cp = line.match(/ score cp (-?\\d+)/)?.[1];
-          const mate = line.match(/ score mate (-?\\d+)/)?.[1];
-          const mpv = Number(line.match(/ multipv (\\d+)/)?.[1] ?? '1');
+          const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+          const cpMatch = line.match(/ score cp (-?\d+)/);
+          const mateMatch = line.match(/ score mate (-?\d+)/);
+          const mpvMatch = line.match(/ multipv (\d+)/);
+
+          const move = moveMatch ? moveMatch[1] : undefined;
+          const cp = cpMatch ? Number(cpMatch[1]) : undefined;
+          const mate = mateMatch ? Number(mateMatch[1]) : undefined;
+          const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
 
           if (move) {
             const entry = {
               move,
-              cp: cp ? Number(cp) : undefined,
-              mate: mate ? Number(mate) : undefined
+              cp,
+              mate
             };
 
             topLines[mpv - 1] = entry;
 
             if (mpv === 1) {
-              currentEval = cp
-                ? Number(cp)
-                : mate
-                  ? Math.sign(Number(mate)) * 10000
-                  : currentEval;
+              if (typeof cp === 'number') {
+                currentEval = cp;
+              } else if (typeof mate === 'number') {
+                currentEval = Math.sign(mate) * 10000;
+              }
             }
           }
         }
 
         if (line.startsWith('bestmove')) {
-          bestMove = line.split(' ')[1] ?? null;
+          const parts = line.split(' ');
+          bestMove = parts.length > 1 ? parts[1] : null;
           finish();
         }
       };
@@ -141,11 +154,13 @@ export default function App() {
 
       worker.postMessage('uci');
       worker.postMessage('setoption name MultiPV value 3');
-      worker.postMessage(\`position fen \${fen}\`);
-      worker.postMessage(\`go depth \${depth}\`);
+      worker.postMessage('position fen ' + fen);
+      worker.postMessage('go depth ' + depth);
 
       setTimeout(() => {
-        if (!done) finish();
+        if (!done) {
+          finish();
+        }
       }, 12000);
     });
   }
@@ -162,28 +177,25 @@ export default function App() {
         setStatus('Analyzing FEN...');
         const result = await evaluateFen(parseFen(input), 16);
         setFenResult(result);
-        setStatus(\`Best move \${result.bestMove ?? '—'} | Eval \${result.bestEvalCp ?? '—'}\`);
+        setStatus('Best move ' + (result.bestMove ?? '—') + ' | Eval ' + (result.bestEvalCp ?? '—'));
         setState('done');
         return;
       }
 
       const timeline = buildMoveTimelineFromPgn(input);
-      const fens = Array.from(
-        new Set(
-          [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[]
-        )
-      );
-
+      const rawFens = [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[];
+      const fens = Array.from(new Set(rawFens));
       const engineResults: EnginePositionResult[] = [];
 
       for (let i = 0; i < fens.length; i++) {
-        setStatus(\`Analyzing \${i + 1}/\${fens.length}\`);
-        engineResults.push(await evaluateFen(fens[i], 13));
+        setStatus('Analyzing ' + (i + 1) + '/' + fens.length);
+        const result = await evaluateFen(fens[i], 13);
+        engineResults.push(result);
       }
 
       const analyzed = mergeAnalysis(input, engineResults);
       setMoves(analyzed);
-      setStatus(\`Done. \${analyzed.length} plies analyzed.\`);
+      setStatus('Done. ' + analyzed.length + ' plies analyzed.');
       setState('done');
     } catch (e) {
       setState('error');
@@ -257,7 +269,7 @@ export default function App() {
               <strong>Top lines:</strong>{' '}
               {fenResult.topLines
                 .filter(Boolean)
-                .map((line) => `${line.move} (${line.cp ?? line.mate ?? '—'})`)
+                .map((line) => line.move + ' (' + (line.cp ?? line.mate ?? '—') + ')')
                 .join(' • ')}
             </div>
           ) : null}
@@ -280,9 +292,7 @@ export default function App() {
               <span>
                 {currentPly} / {moves.length}
               </span>
-              <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>
-                Next
-              </button>
+              <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>Next</button>
               <button onClick={() => setCurrentPly(moves.length)}>End</button>
             </div>
           ) : null}
@@ -296,7 +306,7 @@ export default function App() {
                   <h3>Opening</h3>
                   <p>
                     {summary.opening
-                      ? `${summary.eco} • ${summary.opening}`
+                      ? summary.eco + ' • ' + summary.opening
                       : 'Unknown / not in slim opening list'}
                   </p>
                 </div>
@@ -315,7 +325,7 @@ export default function App() {
               <div className="counts-grid">
                 <div>
                   {LABELS.map((label) => (
-                    <div key={`w-${label}`} className="count-row">
+                    <div key={'w-' + label} className="count-row">
                       <span>White {label}</span>
                       <strong>{summary.white.counts[label]}</strong>
                     </div>
@@ -324,7 +334,7 @@ export default function App() {
 
                 <div>
                   {LABELS.map((label) => (
-                    <div key={`b-${label}`} className="count-row">
+                    <div key={'b-' + label} className="count-row">
                       <span>Black {label}</span>
                       <strong>{summary.black.counts[label]}</strong>
                     </div>
@@ -335,8 +345,8 @@ export default function App() {
               <div className="move-list">
                 {moves.map((move, idx) => (
                   <button
-                    key={`${move.ply}-${move.uci}`}
-                    className={`move-item ${currentPly === idx + 1 ? 'selected' : ''}`}
+                    key={move.ply + '-' + move.uci}
+                    className={'move-item ' + (currentPly === idx + 1 ? 'selected' : '')}
                     onClick={() => setCurrentPly(idx + 1)}
                   >
                     <div>
@@ -348,7 +358,7 @@ export default function App() {
                         Best: {move.bestMove ?? '—'} | CPL: {move.centipawnLoss ?? '—'}
                       </div>
                     </div>
-                    <span className={`badge badge-${move.label.toLowerCase()}`}>
+                    <span className={'badge badge-' + move.label.toLowerCase()}>
                       {move.label}
                     </span>
                   </button>
