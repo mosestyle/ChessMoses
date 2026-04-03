@@ -1,4 +1,5 @@
 # Chess Analysis Lite
+https://mosestyle.github.io/ChessMoses/
 
 Small, mobile-friendly chess analysis app for GitHub Pages.
 
