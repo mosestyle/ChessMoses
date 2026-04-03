@@ -88,7 +88,7 @@ function getHeadersFromPgn(pgn: string): PgnHeaders {
 function getMoveColors(label: MoveLabel) {
   switch (label) {
     case 'Brilliant':
-      return { icon: '‼', color: '#19d3da', text: '#19d3da' };
+      return { icon: '★', color: '#19d3da', text: '#19d3da' };
     case 'Critical':
       return { icon: '!', color: '#7aa2ff', text: '#7aa2ff' };
     case 'Best':
@@ -106,7 +106,7 @@ function getMoveColors(label: MoveLabel) {
     case 'Blunder':
       return { icon: '✖', color: '#ff4d4f', text: '#ff4d4f' };
     case 'Theory':
-      return { icon: 'T', color: '#d1b08c', text: '#d1b08c' };
+      return { icon: '•', color: '#d1b08c', text: '#d1b08c' };
     default:
       return { icon: '•', color: '#cccccc', text: '#cccccc' };
   }
@@ -234,6 +234,42 @@ function shortenArrow(
     x2: x2 - ux * endCut,
     y2: y2 - uy * endCut
   };
+}
+
+function buildArrowPolygon(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  shaftWidth: number,
+  headLength: number,
+  headWidth: number
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (!length) return '';
+
+  const ux = dx / length;
+  const uy = dy / length;
+  const px = -uy;
+  const py = ux;
+
+  const shaftEndX = x2 - ux * headLength;
+  const shaftEndY = y2 - uy * headLength;
+
+  const p1 = [x1 + px * (shaftWidth / 2), y1 + py * (shaftWidth / 2)];
+  const p2 = [shaftEndX + px * (shaftWidth / 2), shaftEndY + py * (shaftWidth / 2)];
+  const p3 = [shaftEndX + px * (headWidth / 2), shaftEndY + py * (headWidth / 2)];
+  const p4 = [x2, y2];
+  const p5 = [shaftEndX - px * (headWidth / 2), shaftEndY - py * (headWidth / 2)];
+  const p6 = [shaftEndX - px * (shaftWidth / 2), shaftEndY - py * (shaftWidth / 2)];
+  const p7 = [x1 - px * (shaftWidth / 2), y1 - py * (shaftWidth / 2)];
+
+  return [p1, p2, p3, p4, p5, p6, p7]
+    .map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2))
+    .join(' ');
 }
 
 export default function App() {
@@ -373,22 +409,28 @@ export default function App() {
     if (!fromCenter || !toCenter) return null;
 
     const squareSize = boardPixelSize / 8;
+
     const shortened = shortenArrow(
       fromCenter.x,
       fromCenter.y,
       toCenter.x,
       toCenter.y,
-      squareSize * 0.22,
-      squareSize * 0.28
+      squareSize * 0.18,
+      squareSize * 0.24
+    );
+
+    const polygon = buildArrowPolygon(
+      shortened.x1,
+      shortened.y1,
+      shortened.x2,
+      shortened.y2,
+      squareSize * 0.16,
+      squareSize * 0.28,
+      squareSize * 0.34
     );
 
     return {
-      from,
-      to,
-      x1: shortened.x1,
-      y1: shortened.y1,
-      x2: shortened.x2,
-      y2: shortened.y2
+      polygon
     };
   }, [selectedMove, orientation, boardPixelSize]);
 
@@ -514,7 +556,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2C with smaller board icons and a shorter, more transparent best-move arrow.
+            Version 2C with smaller board icons and a shorter, softer best-move arrow.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -666,28 +708,7 @@ export default function App() {
                   viewBox={'0 0 ' + boardPixelSize + ' ' + boardPixelSize}
                   preserveAspectRatio="none"
                 >
-                  <defs>
-                    <marker
-                      id="bestMoveArrowHead"
-                      markerWidth="8"
-                      markerHeight="8"
-                      refX="6"
-                      refY="3"
-                      orient="auto"
-                      markerUnits="userSpaceOnUse"
-                    >
-                      <path d="M0,0 L0,6 L6,3 z" className="board-arrow-head" />
-                    </marker>
-                  </defs>
-
-                  <line
-                    x1={bestMoveArrow.x1}
-                    y1={bestMoveArrow.y1}
-                    x2={bestMoveArrow.x2}
-                    y2={bestMoveArrow.y2}
-                    className="board-arrow-line"
-                    markerEnd="url(#bestMoveArrowHead)"
-                  />
+                  <polygon points={bestMoveArrow.polygon} className="board-arrow-shape" />
                 </svg>
               ) : null}
 
