@@ -179,6 +179,36 @@ function getSquareOverlayPosition(
   };
 }
 
+function getSquareCenter(
+  square: string,
+  orientation: Orientation,
+  boardSize: number
+): { x: number; y: number } | null {
+  if (!square || square.length !== 2) return null;
+
+  const files = 'abcdefgh';
+  const file = square[0];
+  const rank = Number(square[1]);
+
+  const fileIndex = files.indexOf(file);
+  if (fileIndex === -1 || rank < 1 || rank > 8) return null;
+
+  const squareSize = boardSize / 8;
+
+  let col = fileIndex;
+  let row = 8 - rank;
+
+  if (orientation === 'black') {
+    col = 7 - fileIndex;
+    row = rank - 1;
+  }
+
+  return {
+    x: col * squareSize + squareSize / 2,
+    y: row * squareSize + squareSize / 2
+  };
+}
+
 export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const workerUrlRef = useRef<string | null>(null);
@@ -303,6 +333,28 @@ export default function App() {
     return getSquareOverlayPosition(lastMove.to, orientation, boardPixelSize);
   }, [selectedMove, orientation, boardPixelSize]);
 
+  const bestMoveArrow = useMemo(() => {
+    if (!selectedMove?.bestMove) return null;
+    if (selectedMove.bestMove.length < 4) return null;
+
+    const from = selectedMove.bestMove.slice(0, 2);
+    const to = selectedMove.bestMove.slice(2, 4);
+
+    const fromCenter = getSquareCenter(from, orientation, boardPixelSize);
+    const toCenter = getSquareCenter(to, orientation, boardPixelSize);
+
+    if (!fromCenter || !toCenter) return null;
+
+    return {
+      from,
+      to,
+      x1: fromCenter.x,
+      y1: fromCenter.y,
+      x2: toCenter.x,
+      y2: toCenter.y
+    };
+  }, [selectedMove, orientation, boardPixelSize]);
+
   async function evaluateFen(fen: string, depth: number, multiPv: number): Promise<EnginePositionResult> {
     return new Promise((resolve, reject) => {
       const worker = workerRef.current;
@@ -425,7 +477,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2C step 1 with move-classification icon on the actual destination square.
+            Version 2C with move-classification icon on the square and best-move arrow on the board.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -570,6 +622,37 @@ export default function App() {
                 boardOrientation={orientation}
                 customSquareStyles={customSquareStyles}
               />
+
+              {bestMoveArrow ? (
+                <svg
+                  className="board-arrow-overlay"
+                  viewBox={'0 0 ' + boardPixelSize + ' ' + boardPixelSize}
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <marker
+                      id="bestMoveArrowHead"
+                      markerWidth="10"
+                      markerHeight="10"
+                      refX="7"
+                      refY="3"
+                      orient="auto"
+                      markerUnits="strokeWidth"
+                    >
+                      <path d="M0,0 L0,6 L8,3 z" className="board-arrow-head" />
+                    </marker>
+                  </defs>
+
+                  <line
+                    x1={bestMoveArrow.x1}
+                    y1={bestMoveArrow.y1}
+                    x2={bestMoveArrow.x2}
+                    y2={bestMoveArrow.y2}
+                    className="board-arrow-line"
+                    markerEnd="url(#bestMoveArrowHead)"
+                  />
+                </svg>
+              ) : null}
 
               {selectedMove && selectedMoveStyle && moveSquareIconPosition ? (
                 <div
