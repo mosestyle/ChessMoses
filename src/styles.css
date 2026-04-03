@@ -238,7 +238,7 @@ textarea {
   margin: 0 auto 12px;
   position: relative;
 }
-.board-wrap > div {
+.board-wrap > div:first-child {
   width: 100% !important;
 }
 .board-arrow-overlay {
@@ -261,12 +261,13 @@ textarea {
   color: #fff;
   font-weight: 800;
   font-size: .5rem;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 3px 8px rgba(0,0,0,.22);
   border: 1px solid rgba(255,255,255,.95);
   pointer-events: none;
+  line-height: 1;
 }
 .summary-grid, .counts-grid {
   display: grid;
