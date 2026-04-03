@@ -232,25 +232,30 @@ textarea {
 .board-stack {
   position: relative;
 }
-.board-badge {
-  position: absolute;
-  z-index: 5;
-  top: 10px;
-  left: 10px;
-  color: white;
-  font-weight: 800;
-  font-size: .9rem;
-  padding: 8px 10px;
-  border-radius: 999px;
-  box-shadow: 0 10px 20px rgba(0,0,0,.3);
-}
 .board-wrap {
   width: 100%;
   max-width: 520px;
   margin: 0 auto 12px;
+  position: relative;
 }
 .board-wrap > div {
   width: 100% !important;
+}
+.square-annotation-icon {
+  position: absolute;
+  z-index: 20;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 800;
+  font-size: .78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(0,0,0,.35);
+  border: 2px solid rgba(255,255,255,.9);
+  pointer-events: none;
 }
 .summary-grid, .counts-grid {
   display: grid;
@@ -377,5 +382,10 @@ textarea {
   }
   .accuracy-strip-title {
     font-size: 1.35rem;
+  }
+  .square-annotation-icon {
+    width: 24px;
+    height: 24px;
+    font-size: .7rem;
   }
 }
