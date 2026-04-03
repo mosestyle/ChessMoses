@@ -556,7 +556,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2C with smaller board icons and a shorter, softer best-move arrow.
+            Version 2C with corrected compact board icon and softer best-move arrow.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -713,7 +713,7 @@ export default function App() {
               ) : null}
 
               {selectedMove && selectedMoveStyle && moveSquareIconPosition ? (
-                <div
+                <span
                   className="square-annotation-icon"
                   style={{
                     left: moveSquareIconPosition.left + 'px',
@@ -723,7 +723,7 @@ export default function App() {
                   title={selectedMove.label}
                 >
                   {selectedMoveStyle.icon}
-                </div>
+                </span>
               ) : null}
             </div>
           </div>
