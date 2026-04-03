@@ -108,8 +108,7 @@ function getMoveColors(label: MoveLabel) {
 }
 
 function formatBestMove(bestMove: string | null) {
-  if (!bestMove) return '—';
-  return bestMove;
+  return bestMove || '—';
 }
 
 function getLastMoveSquares(uci: string | null): { from: string; to: string } | null {
@@ -118,6 +117,31 @@ function getLastMoveSquares(uci: string | null): { from: string; to: string } | 
     from: uci.slice(0, 2),
     to: uci.slice(2, 4)
   };
+}
+
+function clampEval(value: number | null) {
+  if (value === null || Number.isNaN(value)) return 0;
+  if (value > 800) return 800;
+  if (value < -800) return -800;
+  return value;
+}
+
+function buildEvalGraphPath(values: number[], width: number, height: number) {
+  if (!values.length) return '';
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const normalized = (clampEval(value) + 800) / 1600;
+      const y = height - normalized * height;
+      return (index === 0 ? 'M ' : 'L ') + x.toFixed(2) + ' ' + y.toFixed(2);
+    })
+    .join(' ');
+}
+
+function buildEvalAreaPath(values: number[], width: number, height: number) {
+  if (!values.length) return '';
+  const line = buildEvalGraphPath(values, width, height);
+  return line + ' L ' + width + ' ' + height + ' L 0 ' + height + ' Z';
 }
 
 export default function App() {
@@ -139,27 +163,18 @@ export default function App() {
     const setup = createStockfishWorker();
     workerRef.current = setup.worker;
     workerUrlRef.current = setup.blobUrl;
-
     workerRef.current.postMessage('uci');
 
     return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-      }
-      if (workerUrlRef.current) {
-        URL.revokeObjectURL(workerUrlRef.current);
-      }
+      if (workerRef.current) workerRef.current.terminate();
+      if (workerUrlRef.current) URL.revokeObjectURL(workerUrlRef.current);
     };
   }, []);
 
   const headers = useMemo(() => {
-    return mode === 'pgn' ? getHeadersFromPgn(input) : {
-      white: 'White',
-      black: 'Black',
-      event: '',
-      site: '',
-      result: ''
-    };
+    return mode === 'pgn'
+      ? getHeadersFromPgn(input)
+      : { white: 'White', black: 'Black', event: '', site: '', result: '' };
   }, [input, mode]);
 
   const currentFen = useMemo(() => {
@@ -170,7 +185,6 @@ export default function App() {
         return new Chess().fen();
       }
     }
-
     if (!moves.length) return new Chess().fen();
     return currentPly === 0 ? moves[0].fenBefore : moves[currentPly - 1].fenAfter;
   }, [mode, input, moves, currentPly]);
@@ -185,8 +199,7 @@ export default function App() {
   }, [moves, currentPly]);
 
   const selectedMoveStyle = useMemo(() => {
-    if (!selectedMove) return null;
-    return getMoveColors(selectedMove.label);
+    return selectedMove ? getMoveColors(selectedMove.label) : null;
   }, [selectedMove]);
 
   const lastMoveSquares = useMemo(() => {
@@ -196,12 +209,8 @@ export default function App() {
   const customSquareStyles = useMemo(() => {
     if (!lastMoveSquares) return {};
     return {
-      [lastMoveSquares.from]: {
-        backgroundColor: 'rgba(255, 196, 0, 0.35)'
-      },
-      [lastMoveSquares.to]: {
-        backgroundColor: 'rgba(255, 196, 0, 0.55)'
-      }
+      [lastMoveSquares.from]: { backgroundColor: 'rgba(255, 196, 0, 0.35)' },
+      [lastMoveSquares.to]: { backgroundColor: 'rgba(255, 196, 0, 0.55)' }
     };
   }, [lastMoveSquares]);
 
@@ -210,11 +219,31 @@ export default function App() {
     return Math.round((progress.done / progress.total) * 100);
   }, [progress]);
 
-  async function evaluateFen(
-    fen: string,
-    depth: number,
-    multiPv: number
-  ): Promise<EnginePositionResult> {
+  const evalValues = useMemo(() => {
+    return moves.map((move) => clampEval(move.playedEvalCp));
+  }, [moves]);
+
+  const graphWidth = 520;
+  const graphHeight = 140;
+
+  const evalLinePath = useMemo(() => {
+    return buildEvalGraphPath(evalValues, graphWidth, graphHeight);
+  }, [evalValues]);
+
+  const evalAreaPath = useMemo(() => {
+    return buildEvalAreaPath(evalValues, graphWidth, graphHeight);
+  }, [evalValues]);
+
+  const selectedGraphPoint = useMemo(() => {
+    if (!moves.length || currentPly === 0 || currentPly > moves.length) return null;
+    const value = clampEval(moves[currentPly - 1].playedEvalCp);
+    const x = moves.length === 1 ? graphWidth / 2 : ((currentPly - 1) / (moves.length - 1)) * graphWidth;
+    const normalized = (value + 800) / 1600;
+    const y = graphHeight - normalized * graphHeight;
+    return { x, y, value };
+  }, [moves, currentPly]);
+
+  async function evaluateFen(fen: string, depth: number, multiPv: number): Promise<EnginePositionResult> {
     return new Promise((resolve, reject) => {
       const worker = workerRef.current;
       if (!worker) {
@@ -255,12 +284,7 @@ export default function App() {
           const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
 
           if (move) {
-            topLines[mpv - 1] = {
-              move,
-              cp,
-              mate
-            };
-
+            topLines[mpv - 1] = { move, cp, mate };
             if (mpv === 1) {
               if (typeof cp === 'number') currentEval = cp;
               else if (typeof mate === 'number') currentEval = Math.sign(mate) * 10000;
@@ -288,9 +312,7 @@ export default function App() {
       worker.postMessage('go depth ' + depth);
 
       setTimeout(() => {
-        if (!done) {
-          worker.postMessage('stop');
-        }
+        if (!done) worker.postMessage('stop');
       }, 5000);
     });
   }
@@ -343,8 +365,8 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Faster Version 2A with player names, rotate board, last move highlight,
-            progress bar, and move details card.
+            Version 2B with eval graph, selected point marker, board badge,
+            accuracy bar, and more polished move summary.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -377,11 +399,7 @@ export default function App() {
               {state === 'running' ? 'Working...' : 'Run analysis'}
             </button>
 
-            <button
-              onClick={() => {
-                setOrientation((prev) => (prev === 'white' ? 'black' : 'white'));
-              }}
-            >
+            <button onClick={() => setOrientation((prev) => (prev === 'white' ? 'black' : 'white'))}>
               Rotate board
             </button>
           </div>
@@ -391,11 +409,6 @@ export default function App() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={mode === 'pgn' ? 'Paste PGN here...' : 'Paste FEN here...'}
           />
-
-          <div className="helper-text">
-            PGN mode now shows player names from the PGN, board rotation, last move highlight,
-            and faster full-game analysis.
-          </div>
 
           {mode === 'pgn' ? (
             <div className="players-row">
@@ -443,9 +456,7 @@ export default function App() {
                 <span className="move-icon" style={{ backgroundColor: selectedMoveStyle.color }}>
                   {selectedMoveStyle.icon}
                 </span>
-                <span>
-                  {selectedMove.san} is {selectedMove.label.toLowerCase()}
-                </span>
+                <span>{selectedMove.san} is {selectedMove.label.toLowerCase()}</span>
               </div>
 
               {selectedMove.bestMove ? (
@@ -459,20 +470,54 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="move-card empty-move-card">
-              Select a move after analysis to see details.
-            </div>
+            <div className="move-card empty-move-card">Select a move after analysis to see details.</div>
           )}
 
-          <div className="board-wrap">
-            <Chessboard
-              id="analysis-board"
-              position={currentFen}
-              arePiecesDraggable={false}
-              boardWidth={520}
-              boardOrientation={orientation}
-              customSquareStyles={customSquareStyles}
-            />
+          {moves.length ? (
+            <div className="eval-card">
+              <div className="eval-card-title">Evaluation Graph</div>
+              <svg viewBox={'0 0 ' + graphWidth + ' ' + graphHeight} className="eval-graph" preserveAspectRatio="none">
+                <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
+                {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
+                {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
+                {selectedGraphPoint ? (
+                  <>
+                    <line
+                      x1={selectedGraphPoint.x}
+                      y1="0"
+                      x2={selectedGraphPoint.x}
+                      y2={graphHeight}
+                      className="eval-marker-line"
+                    />
+                    <circle
+                      cx={selectedGraphPoint.x}
+                      cy={selectedGraphPoint.y}
+                      r="5"
+                      className="eval-marker-dot"
+                    />
+                  </>
+                ) : null}
+              </svg>
+            </div>
+          ) : null}
+
+          <div className="board-stack">
+            {selectedMove && selectedMoveStyle ? (
+              <div className="board-badge" style={{ backgroundColor: selectedMoveStyle.color }}>
+                {selectedMoveStyle.icon} {selectedMove.label}
+              </div>
+            ) : null}
+
+            <div className="board-wrap">
+              <Chessboard
+                id="analysis-board"
+                position={currentFen}
+                arePiecesDraggable={false}
+                boardWidth={520}
+                boardOrientation={orientation}
+                customSquareStyles={customSquareStyles}
+              />
+            </div>
           </div>
 
           {moves.length ? (
@@ -494,15 +539,35 @@ export default function App() {
                   <h3>Opening</h3>
                   <p>{summary.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</p>
                 </div>
-
                 <div className="summary-card">
                   <h3>{headers.white}</h3>
                   <p>{summary.white.accuracy}%</p>
                 </div>
-
                 <div className="summary-card">
                   <h3>{headers.black}</h3>
                   <p>{summary.black.accuracy}%</p>
+                </div>
+              </div>
+
+              <div className="accuracy-strip-card">
+                <div className="accuracy-strip-title">Accuracies</div>
+                <div className="accuracy-strip">
+                  <div
+                    className="accuracy-left"
+                    style={{ width: summary.white.accuracy + '%' }}
+                  >
+                    {summary.white.accuracy}%
+                  </div>
+                  <div
+                    className="accuracy-right"
+                    style={{ width: summary.black.accuracy + '%' }}
+                  >
+                    {summary.black.accuracy}%
+                  </div>
+                </div>
+                <div className="accuracy-names">
+                  <span>{headers.white}</span>
+                  <span>{headers.black}</span>
                 </div>
               </div>
 
