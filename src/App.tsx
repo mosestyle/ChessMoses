@@ -202,8 +202,8 @@ function getSquareOverlayPosition(
   }
 
   return {
-    left: col * squareSize + squareSize * 0.56,
-    top: row * squareSize + squareSize * 0.24
+    left: col * squareSize + squareSize * 0.62,
+    top: row * squareSize + squareSize * 0.38
   };
 }
 
@@ -588,7 +588,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Wintr-style board icon position adjusted lower and more inside the square.
+            Wintr-style board icon position moved lower to sit closer to the piece.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
