@@ -85,30 +85,58 @@ function getHeadersFromPgn(pgn: string): PgnHeaders {
   };
 }
 
-function getMoveColors(label: MoveLabel) {
+function getLabelColor(label: MoveLabel) {
   switch (label) {
     case 'Brilliant':
-      return { icon: '★', color: '#19d3da', text: '#19d3da' };
+      return '#19d3da';
     case 'Critical':
-      return { icon: '!', color: '#7aa2ff', text: '#7aa2ff' };
+      return '#7aa2ff';
     case 'Best':
-      return { icon: '★', color: '#8bc34a', text: '#8bc34a' };
+      return '#8bc34a';
     case 'Excellent':
-      return { icon: '✓', color: '#7ed957', text: '#7ed957' };
+      return '#7ed957';
     case 'Good':
-      return { icon: '✓', color: '#a9d36e', text: '#a9d36e' };
+      return '#a9d36e';
     case 'Okay':
-      return { icon: '•', color: '#c7d36f', text: '#c7d36f' };
+      return '#c7d36f';
     case 'Inaccuracy':
-      return { icon: '△', color: '#f4c542', text: '#f4c542' };
+      return '#f4c542';
     case 'Mistake':
-      return { icon: '?', color: '#ff9f43', text: '#ff9f43' };
+      return '#ff9f43';
     case 'Blunder':
-      return { icon: '✖', color: '#ff4d4f', text: '#ff4d4f' };
+      return '#ff4d4f';
     case 'Theory':
-      return { icon: '•', color: '#d1b08c', text: '#d1b08c' };
+      return '#d1b08c';
     default:
-      return { icon: '•', color: '#cccccc', text: '#cccccc' };
+      return '#cccccc';
+  }
+}
+
+function getClassificationIcon(label: MoveLabel) {
+  const base = import.meta.env.BASE_URL + 'classifications/';
+  switch (label) {
+    case 'Brilliant':
+      return base + 'brilliant.png';
+    case 'Critical':
+      return base + 'critical.png';
+    case 'Best':
+      return base + 'best.png';
+    case 'Excellent':
+      return base + 'excellent.png';
+    case 'Good':
+      return base + 'excellent.png';
+    case 'Okay':
+      return base + 'okay.png';
+    case 'Inaccuracy':
+      return base + 'inaccuracy.png';
+    case 'Mistake':
+      return base + 'mistake.png';
+    case 'Blunder':
+      return base + 'blunder.png';
+    case 'Theory':
+      return base + 'theory.png';
+    default:
+      return base + 'okay.png';
   }
 }
 
@@ -174,8 +202,8 @@ function getSquareOverlayPosition(
   }
 
   return {
-    left: col * squareSize + squareSize * 0.73,
-    top: row * squareSize + squareSize * 0.08
+    left: col * squareSize + squareSize * 0.67,
+    top: row * squareSize + squareSize * 0.04
   };
 }
 
@@ -344,8 +372,12 @@ export default function App() {
     return moves[currentPly - 1];
   }, [moves, currentPly]);
 
-  const selectedMoveStyle = useMemo(() => {
-    return selectedMove ? getMoveColors(selectedMove.label) : null;
+  const selectedMoveLabelColor = useMemo(() => {
+    return selectedMove ? getLabelColor(selectedMove.label) : '#cccccc';
+  }, [selectedMove]);
+
+  const selectedMoveIcon = useMemo(() => {
+    return selectedMove ? getClassificationIcon(selectedMove.label) : '';
   }, [selectedMove]);
 
   const lastMoveSquares = useMemo(() => {
@@ -556,7 +588,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Version 2C with corrected compact board icon and softer best-move arrow.
+            Now using your Wintr-style classification PNG icons on the board and in the report.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -640,12 +672,14 @@ export default function App() {
         </section>
 
         <section className="panel board-panel">
-          {selectedMove && selectedMoveStyle ? (
+          {selectedMove ? (
             <div className="move-card">
-              <div className="move-card-title" style={{ color: selectedMoveStyle.text }}>
-                <span className="move-icon" style={{ backgroundColor: selectedMoveStyle.color }}>
-                  {selectedMoveStyle.icon}
-                </span>
+              <div className="move-card-title" style={{ color: selectedMoveLabelColor }}>
+                <img
+                  src={selectedMoveIcon}
+                  alt={selectedMove.label}
+                  className="move-card-icon-img"
+                />
                 <span>{selectedMove.san} is {selectedMove.label.toLowerCase()}</span>
               </div>
 
@@ -712,18 +746,16 @@ export default function App() {
                 </svg>
               ) : null}
 
-              {selectedMove && selectedMoveStyle && moveSquareIconPosition ? (
-                <span
-                  className="square-annotation-icon"
+              {selectedMove && moveSquareIconPosition ? (
+                <img
+                  src={selectedMoveIcon}
+                  alt={selectedMove.label}
+                  className="square-annotation-icon-img"
                   style={{
                     left: moveSquareIconPosition.left + 'px',
-                    top: moveSquareIconPosition.top + 'px',
-                    backgroundColor: selectedMoveStyle.color
+                    top: moveSquareIconPosition.top + 'px'
                   }}
-                  title={selectedMove.label}
-                >
-                  {selectedMoveStyle.icon}
-                </span>
+                />
               ) : null}
             </div>
           </div>
@@ -777,10 +809,16 @@ export default function App() {
                 <div>
                   <h3>{headers.white}</h3>
                   {LABELS.map((label) => {
-                    const style = getMoveColors(label);
                     return (
                       <div key={'w-' + label} className="count-row">
-                        <span style={{ color: style.text }}>{label}</span>
+                        <span className="count-label-with-icon">
+                          <img
+                            src={getClassificationIcon(label)}
+                            alt={label}
+                            className="report-icon-img"
+                          />
+                          <span style={{ color: getLabelColor(label) }}>{label}</span>
+                        </span>
                         <strong>{summary.white.counts[label]}</strong>
                       </div>
                     );
@@ -790,10 +828,16 @@ export default function App() {
                 <div>
                   <h3>{headers.black}</h3>
                   {LABELS.map((label) => {
-                    const style = getMoveColors(label);
                     return (
                       <div key={'b-' + label} className="count-row">
-                        <span style={{ color: style.text }}>{label}</span>
+                        <span className="count-label-with-icon">
+                          <img
+                            src={getClassificationIcon(label)}
+                            alt={label}
+                            className="report-icon-img"
+                          />
+                          <span style={{ color: getLabelColor(label) }}>{label}</span>
+                        </span>
                         <strong>{summary.black.counts[label]}</strong>
                       </div>
                     );
@@ -803,7 +847,6 @@ export default function App() {
 
               <div className="move-list">
                 {moves.map((move, idx) => {
-                  const style = getMoveColors(move.label);
                   return (
                     <button
                       key={move.ply + '-' + move.uci}
@@ -811,9 +854,11 @@ export default function App() {
                       onClick={() => setCurrentPly(idx + 1)}
                     >
                       <div className="move-left">
-                        <span className="move-list-icon" style={{ backgroundColor: style.color }}>
-                          {style.icon}
-                        </span>
+                        <img
+                          src={getClassificationIcon(move.label)}
+                          alt={move.label}
+                          className="move-list-icon-img"
+                        />
                         <div>
                           <strong>
                             {move.moveNumber}
