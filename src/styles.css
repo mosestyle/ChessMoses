@@ -250,10 +250,11 @@ textarea {
 .square-annotation-icon-img {
   position: absolute;
   z-index: 20;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 .summary-grid, .counts-grid {
   display: grid;
@@ -388,8 +389,8 @@ textarea {
     font-size: 1.35rem;
   }
   .square-annotation-icon-img {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
   }
   .move-list-icon-img {
     width: 30px;
