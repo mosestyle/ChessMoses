@@ -202,8 +202,8 @@ function getSquareOverlayPosition(
   }
 
   return {
-    left: col * squareSize + squareSize * 0.54,
-    top: row * squareSize + squareSize * 0.52
+    left: col * squareSize + squareSize * 0.64,
+    top: row * squareSize + squareSize * 0.58
   };
 }
 
@@ -588,7 +588,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Icon position moved lower again to better match WintrChess.
+            Icon moved down and slightly right to match WintrChess more closely.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
