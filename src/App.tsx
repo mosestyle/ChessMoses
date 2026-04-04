@@ -202,8 +202,8 @@ function getSquareOverlayPosition(
   }
 
   return {
-    left: col * squareSize + squareSize * 0.67,
-    top: row * squareSize + squareSize * 0.04
+    left: col * squareSize + squareSize * 0.56,
+    top: row * squareSize + squareSize * 0.24
   };
 }
 
@@ -588,7 +588,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Now using your Wintr-style classification PNG icons on the board and in the report.
+            Wintr-style board icon position adjusted lower and more inside the square.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
