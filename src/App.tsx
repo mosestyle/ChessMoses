@@ -192,6 +192,7 @@ function getSquareOverlayPosition(
   if (fileIndex === -1 || rank < 1 || rank > 8) return null;
 
   const squareSize = boardSize / 8;
+  const iconHalf = 12;
 
   let col = fileIndex;
   let row = 8 - rank;
@@ -201,10 +202,13 @@ function getSquareOverlayPosition(
     row = rank - 1;
   }
 
-  return {
-    left: col * squareSize + squareSize * 0.64,
-    top: row * squareSize + squareSize * 0.58
-  };
+  const rawLeft = (col + 1) * squareSize;
+  const rawTop = row * squareSize;
+
+  const left = Math.min(boardSize - iconHalf, Math.max(iconHalf, rawLeft));
+  const top = Math.min(boardSize - iconHalf, Math.max(iconHalf, rawTop));
+
+  return { left, top };
 }
 
 function getSquareCenter(
@@ -588,7 +592,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Icon moved down and slightly right to match WintrChess more closely.
+            Icon now snaps to the top-right intersection point between the four squares.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
