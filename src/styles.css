@@ -91,9 +91,16 @@ textarea {
   border-radius: 14px;
   padding: 14px;
 }
-.helper-text, .mini, .empty-state {
+.helper-text, .mini, .empty-state, .collapsed-note {
   color: #aeb8d2;
   font-size: .92rem;
+}
+.collapsed-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #0d1422;
+  border: 1px solid #2c364d;
 }
 .helper-text {
   margin-top: 10px;
@@ -169,10 +176,31 @@ textarea {
 .empty-move-card {
   color: #aeb8d2;
 }
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.engine-section-header {
+  align-items: center;
+  margin-bottom: 10px;
+}
+.section-toggle-btn {
+  padding: 7px 12px;
+  font-size: .88rem;
+  border-radius: 10px;
+  border: 1px solid #44557a;
+  background: #25314a;
+  color: #edf2ff;
+  white-space: nowrap;
+}
 .move-card-topline {
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  flex: 1;
+  min-width: 0;
 }
 .move-card-headings {
   flex: 1;
@@ -241,7 +269,6 @@ textarea {
 .engine-detail-title {
   font-size: 1rem;
   font-weight: 700;
-  margin-bottom: 10px;
   color: #dfe7ff;
 }
 .engine-detail-loading {
@@ -555,6 +582,10 @@ textarea {
   .move-card-metrics,
   .overview-cards-grid {
     grid-template-columns: 1fr;
+  }
+  .section-header-row {
+    flex-direction: column;
+    align-items: stretch;
   }
   .topbar h1 {
     font-size: 1.6rem;
