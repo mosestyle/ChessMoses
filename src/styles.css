@@ -98,7 +98,7 @@ textarea {
 .helper-text {
   margin-top: 10px;
 }
-.error-box, .fen-card, .progress-card, .accuracy-strip-card, .eval-card {
+.error-box, .fen-card, .progress-card, .accuracy-strip-card, .eval-card, .engine-detail-card {
   margin-top: 12px;
   border-radius: 14px;
   padding: 12px;
@@ -108,7 +108,7 @@ textarea {
   border: 1px solid #7b3040;
   color: #ffd7df;
 }
-.fen-card, .progress-card, .accuracy-strip-card, .eval-card {
+.fen-card, .progress-card, .accuracy-strip-card, .eval-card, .engine-detail-card {
   background: #111827;
   border: 1px solid #334155;
 }
@@ -191,6 +191,57 @@ textarea {
   text-align: center;
   color: #e6e6e6;
   font-size: 1.1rem;
+}
+.engine-detail-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #dfe7ff;
+}
+.engine-detail-loading {
+  color: #aeb8d2;
+  font-size: .95rem;
+}
+.engine-detail-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.engine-detail-summary div {
+  background: #0d1422;
+  border: 1px solid #2c364d;
+  border-radius: 12px;
+  padding: 10px;
+}
+.engine-detail-label {
+  display: block;
+  color: #8fa0c2;
+  font-size: .8rem;
+  margin-bottom: 4px;
+}
+.engine-lines-list {
+  display: grid;
+  gap: 8px;
+}
+.engine-line-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: #0d1422;
+  border: 1px solid #2c364d;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.engine-line-rank {
+  color: #8fa0c2;
+}
+.engine-line-move {
+  font-weight: 700;
+}
+.engine-line-eval {
+  color: #dfe7ff;
 }
 .eval-card-title {
   font-weight: 700;
@@ -376,7 +427,7 @@ textarea {
   .app-shell {
     padding: 12px;
   }
-  .summary-grid, .counts-grid, .players-row {
+  .summary-grid, .counts-grid, .players-row, .engine-detail-summary {
     grid-template-columns: 1fr;
   }
   .topbar h1 {
