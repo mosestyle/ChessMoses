@@ -57,17 +57,9 @@ type SquareOverlayPosition = {
   top: number;
 };
 
-function createStockfishWorker(): { worker: Worker; blobUrl: string } {
-  const workerScript =
-    "self.window = self;\n" +
-    "self.global = self;\n" +
-    "self.process = { env: {} };\n" +
-    "importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');\n";
-
-  const blob = new Blob([workerScript], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-  const worker = new Worker(blobUrl);
-  return { worker, blobUrl };
+function createStockfishWorker(): Worker {
+  const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
+  return new Worker(workerPath);
 }
 
 function getHeadersFromPgn(pgn: string): PgnHeaders {
@@ -387,7 +379,7 @@ async function evaluateFenWithWorker(
         bestEvalCp: currentEval,
         topLines
       });
-    }, 5500);
+    }, 6500);
 
     const finish = () => {
       if (done) return;
@@ -450,7 +442,6 @@ async function evaluateFenWithWorker(
 
 export default function App() {
   const scanWorkerRef = useRef<Worker | null>(null);
-  const scanWorkerUrlRef = useRef<string | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<SVGSVGElement | null>(null);
 
@@ -471,13 +462,11 @@ export default function App() {
 
   useEffect(() => {
     const scan = createStockfishWorker();
-    scanWorkerRef.current = scan.worker;
-    scanWorkerUrlRef.current = scan.blobUrl;
+    scanWorkerRef.current = scan;
     scanWorkerRef.current.postMessage('uci');
 
     return () => {
       if (scanWorkerRef.current) scanWorkerRef.current.terminate();
-      if (scanWorkerUrlRef.current) URL.revokeObjectURL(scanWorkerUrlRef.current);
     };
   }, []);
 
@@ -810,7 +799,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Imported PGNs now finish reliably.
+            Now using Stockfish 17.1 Lite.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
