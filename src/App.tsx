@@ -636,6 +636,33 @@ export default function App() {
     };
   }, [moves]);
 
+  const overviewSummary = useMemo(() => {
+    if (!moves.length) return null;
+
+    const worstMove = [...moves]
+      .filter((m) => typeof m.centipawnLoss === 'number')
+      .sort((a, b) => (b.centipawnLoss ?? 0) - (a.centipawnLoss ?? 0))[0] || null;
+
+    const bestMove =
+      moves.find((m) => m.label === 'Brilliant') ||
+      moves.find((m) => m.label === 'Best') ||
+      moves.find((m) => m.label === 'Excellent') ||
+      null;
+
+    const criticalMoments = moves.filter(
+      (m) => m.label === 'Critical' || m.label === 'Mistake' || m.label === 'Blunder'
+    ).length;
+
+    return {
+      worstMove,
+      bestMove,
+      criticalMoments,
+      opening: summary?.opening ? summary.eco + ' • ' + summary.opening : 'Unknown',
+      blunders: moves.filter((m) => m.label === 'Blunder').length,
+      mistakes: moves.filter((m) => m.label === 'Mistake').length
+    };
+  }, [moves, summary]);
+
   function jumpToNextLabel(target: MoveLabel) {
     if (!moves.length) return;
 
@@ -756,7 +783,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Top move detail card has now been polished.
+            Added game overview summary cards.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -1031,6 +1058,54 @@ export default function App() {
         <section className="panel">
           {summary ? (
             <>
+              {overviewSummary ? (
+                <div className="overview-cards-grid">
+                  <div className="overview-card">
+                    <div className="overview-card-label">Worst move</div>
+                    <div className="overview-card-value">
+                      {overviewSummary.worstMove ? getMoveTitle(overviewSummary.worstMove) : '—'}
+                    </div>
+                    <div className="overview-card-sub">
+                      {overviewSummary.worstMove ? 'CPL ' + (overviewSummary.worstMove.centipawnLoss ?? '—') : ''}
+                    </div>
+                  </div>
+
+                  <div className="overview-card">
+                    <div className="overview-card-label">Best move</div>
+                    <div className="overview-card-value">
+                      {overviewSummary.bestMove ? getMoveTitle(overviewSummary.bestMove) : '—'}
+                    </div>
+                    <div className="overview-card-sub">
+                      {overviewSummary.bestMove ? overviewSummary.bestMove.label : ''}
+                    </div>
+                  </div>
+
+                  <div className="overview-card">
+                    <div className="overview-card-label">Critical moments</div>
+                    <div className="overview-card-value">{overviewSummary.criticalMoments}</div>
+                    <div className="overview-card-sub">Critical, mistakes, blunders</div>
+                  </div>
+
+                  <div className="overview-card">
+                    <div className="overview-card-label">Opening</div>
+                    <div className="overview-card-value">{overviewSummary.opening}</div>
+                    <div className="overview-card-sub">Game opening</div>
+                  </div>
+
+                  <div className="overview-card">
+                    <div className="overview-card-label">Blunders</div>
+                    <div className="overview-card-value">{overviewSummary.blunders}</div>
+                    <div className="overview-card-sub">Total blunders</div>
+                  </div>
+
+                  <div className="overview-card">
+                    <div className="overview-card-label">Mistakes</div>
+                    <div className="overview-card-value">{overviewSummary.mistakes}</div>
+                    <div className="overview-card-sub">Total mistakes</div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="summary-grid">
                 <div className="summary-card">
                   <h3>Opening</h3>
