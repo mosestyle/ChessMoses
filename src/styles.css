@@ -198,6 +198,19 @@ textarea {
   width: 34px;
   height: 34px;
 }
+.best-move-preview-line {
+  margin-top: 12px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #20e35b;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: left;
+}
+.best-move-preview-line span {
+  text-decoration: underline;
+}
 .eval-card-title {
   font-weight: 700;
   margin-bottom: 10px;
