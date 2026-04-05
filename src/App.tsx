@@ -317,6 +317,21 @@ function buildArrowPolygon(
     .join(' ');
 }
 
+function uciToSan(fen: string, uci: string | null) {
+  if (!uci || uci.length < 4) return '—';
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci.length > 4 ? (uci[4] as 'q' | 'r' | 'b' | 'n') : undefined
+    });
+    return move?.san || uci;
+  } catch {
+    return uci;
+  }
+}
+
 async function evaluateFenWithWorker(
   worker: Worker | null,
   fen: string,
@@ -414,6 +429,7 @@ export default function App() {
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
+  const [previewBestMove, setPreviewBestMove] = useState(false);
 
   useEffect(() => {
     const scan = createStockfishWorker();
@@ -457,18 +473,6 @@ export default function App() {
       : { white: 'White', black: 'Black', event: '', site: '', result: '' };
   }, [input, mode]);
 
-  const currentFen = useMemo(() => {
-    if (mode === 'fen') {
-      try {
-        return parseFen(input);
-      } catch {
-        return new Chess().fen();
-      }
-    }
-    if (!moves.length) return new Chess().fen();
-    return currentPly === 0 ? moves[0].fenBefore : moves[currentPly - 1].fenAfter;
-  }, [mode, input, moves, currentPly]);
-
   const summary = useMemo(() => {
     return moves.length ? buildReport(moves) : null;
   }, [moves]);
@@ -478,6 +482,28 @@ export default function App() {
     return moves[currentPly - 1];
   }, [moves, currentPly]);
 
+  useEffect(() => {
+    setPreviewBestMove(false);
+  }, [selectedMove?.ply]);
+
+  const currentFen = useMemo(() => {
+    if (mode === 'fen') {
+      try {
+        return parseFen(input);
+      } catch {
+        return new Chess().fen();
+      }
+    }
+
+    if (!moves.length) return new Chess().fen();
+
+    if (previewBestMove && selectedMove) {
+      return selectedMove.fenBefore;
+    }
+
+    return currentPly === 0 ? moves[0].fenBefore : moves[currentPly - 1].fenAfter;
+  }, [mode, input, moves, currentPly, previewBestMove, selectedMove]);
+
   const selectedMoveLabelColor = useMemo(() => {
     return selectedMove ? getLabelColor(selectedMove.label) : '#cccccc';
   }, [selectedMove]);
@@ -486,17 +512,37 @@ export default function App() {
     return selectedMove ? getClassificationIcon(selectedMove.label) : '';
   }, [selectedMove]);
 
+  const bestMoveText = useMemo(() => {
+    if (!selectedMove?.bestMove) return null;
+    return uciToSan(selectedMove.fenBefore, selectedMove.bestMove);
+  }, [selectedMove]);
+
   const lastMoveSquares = useMemo(() => {
     return selectedMove ? getLastMoveSquares(selectedMove.uci) : null;
   }, [selectedMove]);
 
+  const bestMoveSquares = useMemo(() => {
+    if (!selectedMove?.bestMove || selectedMove.bestMove.length < 4) return null;
+    return {
+      from: selectedMove.bestMove.slice(0, 2),
+      to: selectedMove.bestMove.slice(2, 4)
+    };
+  }, [selectedMove]);
+
   const customSquareStyles = useMemo(() => {
+    if (previewBestMove && bestMoveSquares) {
+      return {
+        [bestMoveSquares.from]: { backgroundColor: 'rgba(118, 214, 95, 0.28)' },
+        [bestMoveSquares.to]: { backgroundColor: 'rgba(118, 214, 95, 0.50)' }
+      };
+    }
+
     if (!lastMoveSquares) return {};
     return {
       [lastMoveSquares.from]: { backgroundColor: 'rgba(255, 196, 0, 0.32)' },
       [lastMoveSquares.to]: { backgroundColor: 'rgba(255, 196, 0, 0.50)' }
     };
-  }, [lastMoveSquares]);
+  }, [previewBestMove, bestMoveSquares, lastMoveSquares]);
 
   const progressPercent = useMemo(() => {
     if (!progress.total) return 0;
@@ -538,10 +584,15 @@ export default function App() {
 
   const moveSquareIconPosition = useMemo(() => {
     if (!selectedMove) return null;
-    const lastMove = getLastMoveSquares(selectedMove.uci);
-    if (!lastMove) return null;
-    return getSquareOverlayPosition(lastMove.to, orientation, boardPixelSize);
-  }, [selectedMove, orientation, boardPixelSize]);
+
+    const targetSquares =
+      previewBestMove && bestMoveSquares
+        ? bestMoveSquares
+        : lastMoveSquares;
+
+    if (!targetSquares) return null;
+    return getSquareOverlayPosition(targetSquares.to, orientation, boardPixelSize);
+  }, [selectedMove, previewBestMove, bestMoveSquares, lastMoveSquares, orientation, boardPixelSize]);
 
   const bestMoveArrow = useMemo(() => {
     if (!selectedMove?.bestMove) return null;
@@ -674,6 +725,7 @@ export default function App() {
     setProgress({ done: 0, total: 0 });
     setMoveFilter('all');
     setHoveredGraphIndex(null);
+    setPreviewBestMove(false);
 
     try {
       if (mode === 'fen') {
@@ -715,7 +767,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Simplified review layout.
+            Best move text is now clickable.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -810,6 +862,15 @@ export default function App() {
                   <div className="move-card-subline">
                     {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
                   </div>
+
+                  {bestMoveText ? (
+                    <button
+                      className="best-move-preview-line"
+                      onClick={() => setPreviewBestMove((v) => !v)}
+                    >
+                      The best move was <span>{bestMoveText}</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -828,7 +889,7 @@ export default function App() {
                 customSquareStyles={customSquareStyles}
               />
 
-              {bestMoveArrow ? (
+              {bestMoveArrow && previewBestMove ? (
                 <svg
                   className="board-arrow-overlay"
                   viewBox={'0 0 ' + boardPixelSize + ' ' + boardPixelSize}
