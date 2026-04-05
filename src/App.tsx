@@ -161,6 +161,22 @@ function formatEval(cp?: number, mate?: number) {
   return '—';
 }
 
+function getMoveTitle(move: AnalyzedMove | null) {
+  if (!move) return '';
+  const prefix = move.color === 'w' ? move.moveNumber + '.' : move.moveNumber + '...';
+  return prefix + ' ' + move.san;
+}
+
+function getMoveSentence(move: AnalyzedMove | null) {
+  if (!move) return '';
+  return getMoveTitle(move) + ' is ' + move.label.toLowerCase();
+}
+
+function getSideLabel(move: AnalyzedMove | null) {
+  if (!move) return '';
+  return move.color === 'w' ? 'White move' : 'Black move';
+}
+
 function getLastMoveSquares(uci: string | null): { from: string; to: string } | null {
   if (!uci || uci.length < 4) return null;
   return {
@@ -740,7 +756,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Evaluation graph is now clickable and synced with the board.
+            Top move detail card has now been polished.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -825,24 +841,47 @@ export default function App() {
 
         <section className="panel board-panel">
           {selectedMove ? (
-            <div className="move-card">
-              <div className="move-card-title" style={{ color: selectedMoveLabelColor }}>
+            <div className="move-card polished-move-card">
+              <div className="move-card-topline">
                 <img
                   src={selectedMoveIcon}
                   alt={selectedMove.label}
-                  className="move-card-icon-img"
+                  className="move-card-icon-img large-icon"
                 />
-                <span>{selectedMove.san} is {selectedMove.label.toLowerCase()}</span>
+                <div className="move-card-headings">
+                  <div className="move-card-mainline" style={{ color: selectedMoveLabelColor }}>
+                    {getMoveSentence(selectedMove)}
+                  </div>
+                  <div className="move-card-subline">
+                    {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
+                  </div>
+                </div>
               </div>
 
-              {selectedMove.bestMove ? (
-                <div className="best-move-line">
-                  The best move was <span>{formatBestMove(selectedMove.bestMove)}</span>
+              <div className="move-card-metrics">
+                <div className="move-metric-box">
+                  <span className="metric-label">Best move</span>
+                  <strong>{detailState?.loading ? 'Loading…' : formatBestMove(detailState?.bestMove ?? selectedMove.bestMove)}</strong>
                 </div>
-              ) : null}
 
-              <div className="opening-line">
-                {summary?.opening ? summary.eco + ': ' + summary.opening : 'Opening unknown'}
+                <div className="move-metric-box">
+                  <span className="metric-label">Eval</span>
+                  <strong>
+                    {detailState?.loading
+                      ? 'Loading…'
+                      : formatEval(detailState?.evalCp ?? undefined)}
+                  </strong>
+                </div>
+
+                <div className="move-metric-box">
+                  <span className="metric-label">CPL</span>
+                  <strong>{selectedMove.centipawnLoss ?? '—'}</strong>
+                </div>
+
+                <div className="move-metric-box">
+                  <span className="metric-label">Opening</span>
+                  <strong>{summary?.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</strong>
+                </div>
               </div>
             </div>
           ) : (
