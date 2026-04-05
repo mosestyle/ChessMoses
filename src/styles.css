@@ -369,6 +369,36 @@ textarea {
   color: #d4d9e6;
   font-weight: 700;
 }
+.move-list-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.jump-group, .filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.toolbar-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #33405e;
+  background: #20283a;
+  color: #edf2ff;
+}
+.toolbar-btn.danger {
+  border-color: #6a2b32;
+}
+.toolbar-btn.warning {
+  border-color: #7b5530;
+}
+.toolbar-btn.caution {
+  border-color: #8d7b2f;
+}
+.toolbar-btn.active-filter {
+  background: #5b7cff;
+  border-color: #5b7cff;
+}
 .count-row {
   display: flex;
   justify-content: space-between;
@@ -400,9 +430,11 @@ textarea {
   gap: 10px;
   align-items: center;
   background: #111827;
+  border: 1px solid #1f2738;
 }
 .move-item.selected {
   outline: 2px solid #5b7cff;
+  background: #16203a;
 }
 .move-left {
   display: flex;
