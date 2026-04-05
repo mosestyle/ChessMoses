@@ -19,7 +19,7 @@ const DEMO_PGN = `[Event "Casual Game"]
 [Black "Mosestyle"]
 [Result "1-0"]
 
-1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Nc3 Nxe4 8. O-O Bxc3 9. d5 Bf6 10. Re1 Ne7 11. Rxe4 d6 12. Bg5 Bxg5 13. Nxg5 O-O 14. Qh5 h6 15. Rae1 Ng6 16. Nxf7 Kxf7 17. Re7+ Qxe7 18. Rxe7+ Kxe7 19. Qxg6 Rf7 20. Bd3 Bd7 21. h4 Raf8 22. f3 Kd8 23. h5 Re7 24. Kf2 Rf6 25. Qh7 Be8 26. Qh8 Kd7 27. g4 Kd8 28. Kg3 Ref7 29. Be4 Re7 30. b4 b6 31. a3 a5 32. bxa5 bxa5 33. Qh7 Re5 34. Qxg7 Rf7 35. Qxh6 Bb5 36. Qd2 a4 37. h6 Rf8 38. h7 Ree8 39. Qg5+ Kc8 40. Qg7 Rh8 41. g5 Bd7 42. g6 1-0`;
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Nc3 Nxe4 8. O-O Bxc3 9. d5 Bf6 10. Re1 Ne7 11. Rexe4 d6 12. Bg5 Bxg5 13. Nxg5 O-O 14. Qh5 h6 15. Rae1 Ng6 16. Nxf7 Kxf7 17. Re7+ Qxe7 18. Rxe7+ Kxe7 19. Qxg6 Rf7 20. Bd3 Bd7 21. h4 Raf8 22. f3 Kd8 23. h5 Re7 24. Kf2 Rf6 25. Qh7 Be8 26. Qh8 Kd7 27. g4 Kd8 28. Kg3 Ref7 29. Be4 Re7 30. b4 b6 31. a3 a5 32. bxa5 bxa5 33. Qh7 Re5 34. Qxg7 Rf7 35. Qxh6 Bb5 36. Qd2 a4 37. h6 Rf8 38. h7 Ree8 39. Qg5+ Kc8 40. Qg7 Rh8 41. g5 Bd7 42. g6 1-0`;
 
 const DEMO_FEN = 'r1bq1rk1/pppp1ppp/2n2n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 6';
 
@@ -54,6 +54,13 @@ type AnalyzeProgress = {
 type SquareOverlayPosition = {
   left: number;
   top: number;
+};
+
+type DetailState = {
+  loading: boolean;
+  bestMove: string | null;
+  evalCp: number | null;
+  topLines: { move: string; cp?: number; mate?: number }[];
 };
 
 function createStockfishWorker(): { worker: Worker; blobUrl: string } {
@@ -142,6 +149,17 @@ function getClassificationIcon(label: MoveLabel) {
 
 function formatBestMove(bestMove: string | null) {
   return bestMove || '—';
+}
+
+function formatEval(cp?: number, mate?: number) {
+  if (typeof mate === 'number') {
+    return '#' + mate;
+  }
+  if (typeof cp === 'number') {
+    const pawns = cp / 100;
+    return (pawns >= 0 ? '+' : '') + pawns.toFixed(2);
+  }
+  return '—';
 }
 
 function getLastMoveSquares(uci: string | null): { from: string; to: string } | null {
@@ -304,10 +322,91 @@ function buildArrowPolygon(
     .join(' ');
 }
 
+async function evaluateFenWithWorker(
+  worker: Worker | null,
+  fen: string,
+  depth: number,
+  multiPv: number
+): Promise<EnginePositionResult> {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Stockfish worker not ready.'));
+      return;
+    }
+
+    let done = false;
+    let bestMove: string | null = null;
+    let currentEval: number | null = null;
+    const topLines: EnginePositionResult['topLines'] = [];
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      worker.onmessage = null;
+      worker.onerror = null;
+      resolve({
+        fen,
+        bestMove,
+        bestEvalCp: currentEval,
+        topLines
+      });
+    };
+
+    worker.onmessage = (event: MessageEvent) => {
+      const line = String(event.data);
+
+      if (line.startsWith('info ')) {
+        const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+        const cpMatch = line.match(/ score cp (-?\d+)/);
+        const mateMatch = line.match(/ score mate (-?\d+)/);
+        const mpvMatch = line.match(/ multipv (\d+)/);
+
+        const move = moveMatch ? moveMatch[1] : undefined;
+        const cp = cpMatch ? Number(cpMatch[1]) : undefined;
+        const mate = mateMatch ? Number(mateMatch[1]) : undefined;
+        const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
+
+        if (move) {
+          topLines[mpv - 1] = { move, cp, mate };
+          if (mpv === 1) {
+            if (typeof cp === 'number') currentEval = cp;
+            else if (typeof mate === 'number') currentEval = Math.sign(mate) * 10000;
+          }
+        }
+      }
+
+      if (line.startsWith('bestmove')) {
+        const parts = line.split(' ');
+        bestMove = parts.length > 1 ? parts[1] : null;
+        finish();
+      }
+    };
+
+    worker.onerror = () => {
+      worker.onmessage = null;
+      worker.onerror = null;
+      reject(new Error('Stockfish worker failed during analysis.'));
+    };
+
+    worker.postMessage('stop');
+    worker.postMessage('ucinewgame');
+    worker.postMessage('setoption name MultiPV value ' + multiPv);
+    worker.postMessage('position fen ' + fen);
+    worker.postMessage('go depth ' + depth);
+
+    setTimeout(() => {
+      if (!done) worker.postMessage('stop');
+    }, 5000);
+  });
+}
+
 export default function App() {
-  const workerRef = useRef<Worker | null>(null);
-  const workerUrlRef = useRef<string | null>(null);
+  const scanWorkerRef = useRef<Worker | null>(null);
+  const scanWorkerUrlRef = useRef<string | null>(null);
+  const detailWorkerRef = useRef<Worker | null>(null);
+  const detailWorkerUrlRef = useRef<string | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
+  const detailRequestIdRef = useRef(0);
 
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
   const [input, setInput] = useState<string>(DEMO_PGN);
@@ -320,16 +419,25 @@ export default function App() {
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
+  const [detailState, setDetailState] = useState<DetailState | null>(null);
 
   useEffect(() => {
-    const setup = createStockfishWorker();
-    workerRef.current = setup.worker;
-    workerUrlRef.current = setup.blobUrl;
-    workerRef.current.postMessage('uci');
+    const scan = createStockfishWorker();
+    const detail = createStockfishWorker();
+
+    scanWorkerRef.current = scan.worker;
+    scanWorkerUrlRef.current = scan.blobUrl;
+    detailWorkerRef.current = detail.worker;
+    detailWorkerUrlRef.current = detail.blobUrl;
+
+    scanWorkerRef.current.postMessage('uci');
+    detailWorkerRef.current.postMessage('uci');
 
     return () => {
-      if (workerRef.current) workerRef.current.terminate();
-      if (workerUrlRef.current) URL.revokeObjectURL(workerUrlRef.current);
+      if (scanWorkerRef.current) scanWorkerRef.current.terminate();
+      if (scanWorkerUrlRef.current) URL.revokeObjectURL(scanWorkerUrlRef.current);
+      if (detailWorkerRef.current) detailWorkerRef.current.terminate();
+      if (detailWorkerUrlRef.current) URL.revokeObjectURL(detailWorkerUrlRef.current);
     };
   }, []);
 
@@ -478,79 +586,40 @@ export default function App() {
     };
   }, [selectedMove, orientation, boardPixelSize]);
 
-  async function evaluateFen(fen: string, depth: number, multiPv: number): Promise<EnginePositionResult> {
-    return new Promise((resolve, reject) => {
-      const worker = workerRef.current;
-      if (!worker) {
-        reject(new Error('Stockfish worker not ready.'));
-        return;
-      }
+  useEffect(() => {
+    if (!selectedMove || state !== 'done' || mode !== 'pgn') {
+      setDetailState(null);
+      return;
+    }
 
-      let done = false;
-      let bestMove: string | null = null;
-      let currentEval: number | null = null;
-      const topLines: EnginePositionResult['topLines'] = [];
-
-      const finish = () => {
-        if (done) return;
-        done = true;
-        worker.onmessage = null;
-        worker.onerror = null;
-        resolve({
-          fen,
-          bestMove,
-          bestEvalCp: currentEval,
-          topLines
-        });
-      };
-
-      worker.onmessage = (event: MessageEvent) => {
-        const line = String(event.data);
-
-        if (line.startsWith('info ')) {
-          const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-          const cpMatch = line.match(/ score cp (-?\d+)/);
-          const mateMatch = line.match(/ score mate (-?\d+)/);
-          const mpvMatch = line.match(/ multipv (\d+)/);
-
-          const move = moveMatch ? moveMatch[1] : undefined;
-          const cp = cpMatch ? Number(cpMatch[1]) : undefined;
-          const mate = mateMatch ? Number(mateMatch[1]) : undefined;
-          const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
-
-          if (move) {
-            topLines[mpv - 1] = { move, cp, mate };
-            if (mpv === 1) {
-              if (typeof cp === 'number') currentEval = cp;
-              else if (typeof mate === 'number') currentEval = Math.sign(mate) * 10000;
-            }
-          }
-        }
-
-        if (line.startsWith('bestmove')) {
-          const parts = line.split(' ');
-          bestMove = parts.length > 1 ? parts[1] : null;
-          finish();
-        }
-      };
-
-      worker.onerror = () => {
-        worker.onmessage = null;
-        worker.onerror = null;
-        reject(new Error('Stockfish worker failed during analysis.'));
-      };
-
-      worker.postMessage('stop');
-      worker.postMessage('ucinewgame');
-      worker.postMessage('setoption name MultiPV value ' + multiPv);
-      worker.postMessage('position fen ' + fen);
-      worker.postMessage('go depth ' + depth);
-
-      setTimeout(() => {
-        if (!done) worker.postMessage('stop');
-      }, 5000);
+    const requestId = ++detailRequestIdRef.current;
+    setDetailState({
+      loading: true,
+      bestMove: null,
+      evalCp: null,
+      topLines: []
     });
-  }
+
+    evaluateFenWithWorker(detailWorkerRef.current, selectedMove.fenBefore, 12, 3)
+      .then((result) => {
+        if (detailRequestIdRef.current !== requestId) return;
+        setDetailState({
+          loading: false,
+          bestMove: result.bestMove,
+          evalCp: result.bestEvalCp,
+          topLines: result.topLines.filter(Boolean)
+        });
+      })
+      .catch(() => {
+        if (detailRequestIdRef.current !== requestId) return;
+        setDetailState({
+          loading: false,
+          bestMove: null,
+          evalCp: null,
+          topLines: []
+        });
+      });
+  }, [selectedMove, state, mode]);
 
   async function runAnalysis() {
     setState('running');
@@ -559,11 +628,12 @@ export default function App() {
     setFenResult(null);
     setCurrentPly(0);
     setProgress({ done: 0, total: 0 });
+    setDetailState(null);
 
     try {
       if (mode === 'fen') {
         setStatus('Analyzing FEN...');
-        const result = await evaluateFen(parseFen(input), 10, 1);
+        const result = await evaluateFenWithWorker(scanWorkerRef.current, parseFen(input), 10, 1);
         setFenResult(result);
         setStatus('Best move ' + (result.bestMove ?? '—') + ' | Eval ' + (result.bestEvalCp ?? '—'));
         setState('done');
@@ -579,7 +649,7 @@ export default function App() {
 
       for (let i = 0; i < fens.length; i++) {
         setStatus('Analyzing move ' + (i + 1) + ' / ' + fens.length);
-        const result = await evaluateFen(fens[i], 10, 1);
+        const result = await evaluateFenWithWorker(scanWorkerRef.current, fens[i], 10, 1);
         engineResults.push(result);
         setProgress({ done: i + 1, total: fens.length });
       }
@@ -600,7 +670,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Desktop and phone now use the same live board-size measurement.
+            Added selected move engine panel with top candidate moves.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -708,6 +778,43 @@ export default function App() {
           ) : (
             <div className="move-card empty-move-card">Select a move after analysis to see details.</div>
           )}
+
+          {detailState ? (
+            <div className="engine-detail-card">
+              <div className="engine-detail-title">Engine lines</div>
+
+              {detailState.loading ? (
+                <div className="engine-detail-loading">Loading engine lines…</div>
+              ) : (
+                <>
+                  <div className="engine-detail-summary">
+                    <div>
+                      <span className="engine-detail-label">Best move</span>
+                      <strong>{detailState.bestMove ?? '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="engine-detail-label">Eval</span>
+                      <strong>{formatEval(detailState.evalCp ?? undefined)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="engine-lines-list">
+                    {detailState.topLines.length ? (
+                      detailState.topLines.map((line, index) => (
+                        <div className="engine-line-row" key={index}>
+                          <span className="engine-line-rank">#{index + 1}</span>
+                          <span className="engine-line-move">{line.move}</span>
+                          <span className="engine-line-eval">{formatEval(line.cp, line.mate)}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="engine-detail-loading">No lines available.</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
 
           {moves.length ? (
             <div className="eval-card">
