@@ -57,13 +57,6 @@ type SquareOverlayPosition = {
   top: number;
 };
 
-type DetailState = {
-  loading: boolean;
-  bestMove: string | null;
-  evalCp: number | null;
-  topLines: { move: string; cp?: number; mate?: number }[];
-};
-
 function createStockfishWorker(): { worker: Worker; blobUrl: string } {
   const workerScript =
     "self.window = self;\n" +
@@ -146,19 +139,6 @@ function getClassificationIcon(label: MoveLabel) {
     default:
       return base + 'okay.png';
   }
-}
-
-function formatBestMove(bestMove: string | null) {
-  return bestMove || '—';
-}
-
-function formatEval(cp?: number, mate?: number) {
-  if (typeof mate === 'number') return '#' + mate;
-  if (typeof cp === 'number') {
-    const pawns = cp / 100;
-    return (pawns >= 0 ? '+' : '') + pawns.toFixed(2);
-  }
-  return '—';
 }
 
 function getMoveTitle(move: AnalyzedMove | null) {
@@ -418,11 +398,8 @@ async function evaluateFenWithWorker(
 export default function App() {
   const scanWorkerRef = useRef<Worker | null>(null);
   const scanWorkerUrlRef = useRef<string | null>(null);
-  const detailWorkerRef = useRef<Worker | null>(null);
-  const detailWorkerUrlRef = useRef<string | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<SVGSVGElement | null>(null);
-  const detailRequestIdRef = useRef(0);
 
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
   const [input, setInput] = useState<string>(DEMO_PGN);
@@ -435,29 +412,18 @@ export default function App() {
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
-  const [detailState, setDetailState] = useState<DetailState | null>(null);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
-  const [showMoveMetrics, setShowMoveMetrics] = useState(false);
-  const [showEngineLines, setShowEngineLines] = useState(false);
 
   useEffect(() => {
     const scan = createStockfishWorker();
-    const detail = createStockfishWorker();
-
     scanWorkerRef.current = scan.worker;
     scanWorkerUrlRef.current = scan.blobUrl;
-    detailWorkerRef.current = detail.worker;
-    detailWorkerUrlRef.current = detail.blobUrl;
-
     scanWorkerRef.current.postMessage('uci');
-    detailWorkerRef.current.postMessage('uci');
 
     return () => {
       if (scanWorkerRef.current) scanWorkerRef.current.terminate();
       if (scanWorkerUrlRef.current) URL.revokeObjectURL(scanWorkerUrlRef.current);
-      if (detailWorkerRef.current) detailWorkerRef.current.terminate();
-      if (detailWorkerUrlRef.current) URL.revokeObjectURL(detailWorkerUrlRef.current);
     };
   }, []);
 
@@ -699,41 +665,6 @@ export default function App() {
     if (index !== null) setCurrentPly(index + 1);
   }
 
-  useEffect(() => {
-    if (!selectedMove || state !== 'done' || mode !== 'pgn') {
-      setDetailState(null);
-      return;
-    }
-
-    const requestId = ++detailRequestIdRef.current;
-    setDetailState({
-      loading: true,
-      bestMove: null,
-      evalCp: null,
-      topLines: []
-    });
-
-    evaluateFenWithWorker(detailWorkerRef.current, selectedMove.fenBefore, 12, 3)
-      .then((result) => {
-        if (detailRequestIdRef.current !== requestId) return;
-        setDetailState({
-          loading: false,
-          bestMove: result.bestMove,
-          evalCp: result.bestEvalCp,
-          topLines: result.topLines.filter(Boolean)
-        });
-      })
-      .catch(() => {
-        if (detailRequestIdRef.current !== requestId) return;
-        setDetailState({
-          loading: false,
-          bestMove: null,
-          evalCp: null,
-          topLines: []
-        });
-      });
-  }, [selectedMove, state, mode]);
-
   async function runAnalysis() {
     setState('running');
     setError('');
@@ -741,11 +672,8 @@ export default function App() {
     setFenResult(null);
     setCurrentPly(0);
     setProgress({ done: 0, total: 0 });
-    setDetailState(null);
     setMoveFilter('all');
     setHoveredGraphIndex(null);
-    setShowMoveMetrics(false);
-    setShowEngineLines(false);
 
     try {
       if (mode === 'fen') {
@@ -787,7 +715,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Move details and engine lines now use default-collapsed toggle sections.
+            Simplified review layout.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -818,10 +746,6 @@ export default function App() {
 
             <button className="primary" onClick={runAnalysis} disabled={state === 'running'}>
               {state === 'running' ? 'Working...' : 'Run analysis'}
-            </button>
-
-            <button onClick={() => setOrientation((prev) => (prev === 'white' ? 'black' : 'white'))}>
-              Rotate board
             </button>
           </div>
 
@@ -872,119 +796,78 @@ export default function App() {
 
         <section className="panel board-panel">
           {selectedMove ? (
-            <div className="move-card polished-move-card">
-              <div className="section-header-row">
-                <div className="move-card-topline">
-                  <img
-                    src={selectedMoveIcon}
-                    alt={selectedMove.label}
-                    className="move-card-icon-img large-icon"
-                  />
-                  <div className="move-card-headings">
-                    <div className="move-card-mainline" style={{ color: selectedMoveLabelColor }}>
-                      {getMoveSentence(selectedMove)}
-                    </div>
-                    <div className="move-card-subline">
-                      {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
-                    </div>
+            <div className="move-card polished-move-card compact-move-card">
+              <div className="move-card-topline">
+                <img
+                  src={selectedMoveIcon}
+                  alt={selectedMove.label}
+                  className="move-card-icon-img large-icon"
+                />
+                <div className="move-card-headings">
+                  <div className="move-card-mainline" style={{ color: selectedMoveLabelColor }}>
+                    {getMoveSentence(selectedMove)}
+                  </div>
+                  <div className="move-card-subline">
+                    {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
                   </div>
                 </div>
-
-                <button
-                  className="section-toggle-btn"
-                  onClick={() => setShowMoveMetrics((v) => !v)}
-                >
-                  {showMoveMetrics ? 'Hide' : 'Show'}
-                </button>
               </div>
-
-              {showMoveMetrics ? (
-                <div className="move-card-metrics">
-                  <div className="move-metric-box">
-                    <span className="metric-label">Best move</span>
-                    <strong>{detailState?.loading ? 'Loading…' : formatBestMove(detailState?.bestMove ?? selectedMove.bestMove)}</strong>
-                  </div>
-
-                  <div className="move-metric-box">
-                    <span className="metric-label">Eval</span>
-                    <strong>
-                      {detailState?.loading
-                        ? 'Loading…'
-                        : formatEval(detailState?.evalCp ?? undefined)}
-                    </strong>
-                  </div>
-
-                  <div className="move-metric-box">
-                    <span className="metric-label">CPL</span>
-                    <strong>{selectedMove.centipawnLoss ?? '—'}</strong>
-                  </div>
-
-                  <div className="move-metric-box">
-                    <span className="metric-label">Opening</span>
-                    <strong>{summary?.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</strong>
-                  </div>
-                </div>
-              ) : (
-                <div className="collapsed-note">Move details hidden</div>
-              )}
             </div>
           ) : (
             <div className="move-card empty-move-card">Select a move after analysis to see details.</div>
           )}
 
-          {detailState ? (
-            <div className="engine-detail-card">
-              <div className="section-header-row engine-section-header">
-                <div className="engine-detail-title">Engine lines</div>
-                <button
-                  className="section-toggle-btn"
-                  onClick={() => setShowEngineLines((v) => !v)}
+          <div className="board-stack">
+            <div className="board-wrap" ref={boardWrapRef}>
+              <Chessboard
+                id="analysis-board"
+                position={currentFen}
+                arePiecesDraggable={false}
+                boardWidth={520}
+                boardOrientation={orientation}
+                customSquareStyles={customSquareStyles}
+              />
+
+              {bestMoveArrow ? (
+                <svg
+                  className="board-arrow-overlay"
+                  viewBox={'0 0 ' + boardPixelSize + ' ' + boardPixelSize}
+                  preserveAspectRatio="none"
                 >
-                  {showEngineLines ? 'Hide' : 'Show'}
-                </button>
-              </div>
+                  <polygon points={bestMoveArrow.polygon} className="board-arrow-shape" />
+                </svg>
+              ) : null}
 
-              {showEngineLines ? (
-                <>
-                  {detailState.loading ? (
-                    <div className="engine-detail-loading">Loading engine lines…</div>
-                  ) : (
-                    <>
-                      <div className="engine-detail-summary">
-                        <div>
-                          <span className="engine-detail-label">Best move</span>
-                          <strong>{detailState.bestMove ?? '—'}</strong>
-                        </div>
-                        <div>
-                          <span className="engine-detail-label">Eval</span>
-                          <strong>{formatEval(detailState.evalCp ?? undefined)}</strong>
-                        </div>
-                      </div>
+              {selectedMove && moveSquareIconPosition ? (
+                <img
+                  src={selectedMoveIcon}
+                  alt={selectedMove.label}
+                  className="square-annotation-icon-img"
+                  style={{
+                    left: moveSquareIconPosition.left + 'px',
+                    top: moveSquareIconPosition.top + 'px'
+                  }}
+                />
+              ) : null}
+            </div>
+          </div>
 
-                      <div className="engine-lines-list">
-                        {detailState.topLines.length ? (
-                          detailState.topLines.map((line, index) => (
-                            <div className="engine-line-row" key={index}>
-                              <span className="engine-line-rank">#{index + 1}</span>
-                              <span className="engine-line-move">{line.move}</span>
-                              <span className="engine-line-eval">{formatEval(line.cp, line.mate)}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="engine-detail-loading">No lines available.</div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <div className="collapsed-note">Engine lines hidden</div>
-              )}
+          {moves.length ? (
+            <div className="scrubber">
+              <button onClick={() => setCurrentPly(0)}>Start</button>
+              <button onClick={() => setCurrentPly((v) => Math.max(0, v - 1))}>Prev</button>
+              <span>{currentPly} / {moves.length}</span>
+              <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>Next</button>
+              <button onClick={() => setCurrentPly(moves.length)}>End</button>
+              <div className="scrubber-spacer" />
+              <button onClick={() => setOrientation((prev) => (prev === 'white' ? 'black' : 'white'))}>
+                Rotate board
+              </button>
             </div>
           ) : null}
 
           {moves.length ? (
-            <div className="eval-card">
+            <div className="eval-card graph-below-board">
               <div className="eval-card-title">Evaluation Graph</div>
               <svg
                 ref={graphRef}
@@ -1037,51 +920,6 @@ export default function App() {
                   </>
                 ) : null}
               </svg>
-            </div>
-          ) : null}
-
-          <div className="board-stack">
-            <div className="board-wrap" ref={boardWrapRef}>
-              <Chessboard
-                id="analysis-board"
-                position={currentFen}
-                arePiecesDraggable={false}
-                boardWidth={520}
-                boardOrientation={orientation}
-                customSquareStyles={customSquareStyles}
-              />
-
-              {bestMoveArrow ? (
-                <svg
-                  className="board-arrow-overlay"
-                  viewBox={'0 0 ' + boardPixelSize + ' ' + boardPixelSize}
-                  preserveAspectRatio="none"
-                >
-                  <polygon points={bestMoveArrow.polygon} className="board-arrow-shape" />
-                </svg>
-              ) : null}
-
-              {selectedMove && moveSquareIconPosition ? (
-                <img
-                  src={selectedMoveIcon}
-                  alt={selectedMove.label}
-                  className="square-annotation-icon-img"
-                  style={{
-                    left: moveSquareIconPosition.left + 'px',
-                    top: moveSquareIconPosition.top + 'px'
-                  }}
-                />
-              ) : null}
-            </div>
-          </div>
-
-          {moves.length ? (
-            <div className="scrubber">
-              <button onClick={() => setCurrentPly(0)}>Start</button>
-              <button onClick={() => setCurrentPly((v) => Math.max(0, v - 1))}>Prev</button>
-              <span>{currentPly} / {moves.length}</span>
-              <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>Next</button>
-              <button onClick={() => setCurrentPly(moves.length)}>End</button>
             </div>
           ) : null}
         </section>
