@@ -19,7 +19,7 @@ const DEMO_PGN = `[Event "Casual Game"]
 [Black "Mosestyle"]
 [Result "1-0"]
 
-1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Nc3 Nxe4 8. O-O Bxc3 9. d5 Bf6 10. Re1 Ne7 11. Rexe4 d6 12. Bg5 Bxg5 13. Nxg5 O-O 14. Qh5 h6 15. Rae1 Ng6 16. Nxf7 Kxf7 17. Re7+ Qxe7 18. Rxe7+ Kxe7 19. Qxg6 Rf7 20. Bd3 Bd7 21. h4 Raf8 22. f3 Kd8 23. h5 Re7 24. Kf2 Rf6 25. Qh7 Be8 26. Qh8 Kd7 27. g4 Kd8 28. Kg3 Ref7 29. Be4 Re7 30. b4 b6 31. a3 a5 32. bxa5 bxa5 33. Qh7 Re5 34. Qxg7 Rf7 35. Qxh6 Bb5 36. Qd2 a4 37. h6 Rf8 38. h7 Ree8 39. Qg5+ Kc8 40. Qg7 Rh8 41. g5 Bd7 42. g6 1-0`;
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. cxd4 Bb4+ 7. Nc3 Nxe4 8. O-O Bxc3 9. d5 Bf6 10. Re1 Ne7 11. Rexe4 d6 12. Bg5 Bxg5 13. Nxg5 O-O 14. Qh5 h6 15. Rae1 Ng6 16. Nxf7 Kxf7 17. Re7+ Qxe7 18. Rexe7+ Kxe7 19. Qxg6 Rf7 20. Bd3 Bd7 21. h4 Raf8 22. f3 Kd8 23. h5 Re7 24. Kf2 Rf6 25. Qh7 Be8 26. Qh8 Kd7 27. g4 Kd8 28. Kg3 Ref7 29. Be4 Re7 30. b4 b6 31. a3 a5 32. bxa5 bxa5 33. Qh7 Re5 34. Qxg7 Rf7 35. Qxh6 Bb5 36. Qd2 a4 37. h6 Rf8 38. h7 Ree8 39. Qg5+ Kc8 40. Qg7 Rh8 41. g5 Bd7 42. g6 1-0`;
 
 const DEMO_FEN = 'r1bq1rk1/pppp1ppp/2n2n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 6';
 
@@ -37,6 +37,7 @@ const LABELS = [
 ] as const;
 
 type Orientation = 'white' | 'black';
+type MoveFilter = 'all' | 'bad' | 'great';
 
 type PgnHeaders = {
   white: string;
@@ -152,9 +153,7 @@ function formatBestMove(bestMove: string | null) {
 }
 
 function formatEval(cp?: number, mate?: number) {
-  if (typeof mate === 'number') {
-    return '#' + mate;
-  }
+  if (typeof mate === 'number') return '#' + mate;
   if (typeof cp === 'number') {
     const pawns = cp / 100;
     return (pawns >= 0 ? '+' : '') + pawns.toFixed(2);
@@ -420,6 +419,7 @@ export default function App() {
   const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
   const [detailState, setDetailState] = useState<DetailState | null>(null);
+  const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
 
   useEffect(() => {
     const scan = createStockfishWorker();
@@ -586,6 +586,46 @@ export default function App() {
     };
   }, [selectedMove, orientation, boardPixelSize]);
 
+  const filteredMoves = useMemo(() => {
+    if (moveFilter === 'all') return moves;
+    if (moveFilter === 'bad') {
+      return moves.filter((move) =>
+        move.label === 'Blunder' ||
+        move.label === 'Mistake' ||
+        move.label === 'Inaccuracy'
+      );
+    }
+    return moves.filter((move) =>
+      move.label === 'Brilliant' ||
+      move.label === 'Critical' ||
+      move.label === 'Best' ||
+      move.label === 'Excellent'
+    );
+  }, [moves, moveFilter]);
+
+  const countsSummary = useMemo(() => {
+    return {
+      blunders: moves.filter((m) => m.label === 'Blunder').length,
+      mistakes: moves.filter((m) => m.label === 'Mistake').length,
+      inaccuracies: moves.filter((m) => m.label === 'Inaccuracy').length
+    };
+  }, [moves]);
+
+  function jumpToNextLabel(target: MoveLabel) {
+    if (!moves.length) return;
+
+    const startIndex = Math.max(0, currentPly);
+    let found = moves.findIndex((move, idx) => idx >= startIndex && move.label === target);
+
+    if (found === -1) {
+      found = moves.findIndex((move) => move.label === target);
+    }
+
+    if (found !== -1) {
+      setCurrentPly(found + 1);
+    }
+  }
+
   useEffect(() => {
     if (!selectedMove || state !== 'done' || mode !== 'pgn') {
       setDetailState(null);
@@ -629,6 +669,7 @@ export default function App() {
     setCurrentPly(0);
     setProgress({ done: 0, total: 0 });
     setDetailState(null);
+    setMoveFilter('all');
 
     try {
       if (mode === 'fen') {
@@ -670,7 +711,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Added selected move engine panel with top candidate moves.
+            Added move list jump buttons and filters for faster review.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -924,6 +965,41 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="move-list-toolbar">
+                <div className="jump-group">
+                  <button className="toolbar-btn danger" onClick={() => jumpToNextLabel('Blunder')}>
+                    Blunders ({countsSummary.blunders})
+                  </button>
+                  <button className="toolbar-btn warning" onClick={() => jumpToNextLabel('Mistake')}>
+                    Mistakes ({countsSummary.mistakes})
+                  </button>
+                  <button className="toolbar-btn caution" onClick={() => jumpToNextLabel('Inaccuracy')}>
+                    Inaccuracies ({countsSummary.inaccuracies})
+                  </button>
+                </div>
+
+                <div className="filter-group">
+                  <button
+                    className={'toolbar-btn ' + (moveFilter === 'all' ? 'active-filter' : '')}
+                    onClick={() => setMoveFilter('all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    className={'toolbar-btn ' + (moveFilter === 'bad' ? 'active-filter' : '')}
+                    onClick={() => setMoveFilter('bad')}
+                  >
+                    Bad moves
+                  </button>
+                  <button
+                    className={'toolbar-btn ' + (moveFilter === 'great' ? 'active-filter' : '')}
+                    onClick={() => setMoveFilter('great')}
+                  >
+                    Great moves
+                  </button>
+                </div>
+              </div>
+
               <div className="counts-grid">
                 <div>
                   <h3>{headers.white}</h3>
@@ -965,12 +1041,13 @@ export default function App() {
               </div>
 
               <div className="move-list">
-                {moves.map((move, idx) => {
+                {filteredMoves.map((move) => {
+                  const originalIndex = moves.findIndex((m) => m.ply === move.ply && m.uci === move.uci);
                   return (
                     <button
                       key={move.ply + '-' + move.uci}
-                      className={'move-item ' + (currentPly === idx + 1 ? 'selected' : '')}
-                      onClick={() => setCurrentPly(idx + 1)}
+                      className={'move-item ' + (currentPly === originalIndex + 1 ? 'selected' : '')}
+                      onClick={() => setCurrentPly(originalIndex + 1)}
                     >
                       <div className="move-left">
                         <img
@@ -991,6 +1068,10 @@ export default function App() {
                     </button>
                   );
                 })}
+
+                {!filteredMoves.length ? (
+                  <div className="empty-state">No moves match this filter.</div>
+                ) : null}
               </div>
             </>
           ) : (
