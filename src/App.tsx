@@ -438,6 +438,8 @@ export default function App() {
   const [detailState, setDetailState] = useState<DetailState | null>(null);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
+  const [showMoveMetrics, setShowMoveMetrics] = useState(false);
+  const [showEngineLines, setShowEngineLines] = useState(false);
 
   useEffect(() => {
     const scan = createStockfishWorker();
@@ -742,6 +744,8 @@ export default function App() {
     setDetailState(null);
     setMoveFilter('all');
     setHoveredGraphIndex(null);
+    setShowMoveMetrics(false);
+    setShowEngineLines(false);
 
     try {
       if (mode === 'fen') {
@@ -783,7 +787,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Added game overview summary cards.
+            Move details and engine lines now use default-collapsed toggle sections.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -869,47 +873,60 @@ export default function App() {
         <section className="panel board-panel">
           {selectedMove ? (
             <div className="move-card polished-move-card">
-              <div className="move-card-topline">
-                <img
-                  src={selectedMoveIcon}
-                  alt={selectedMove.label}
-                  className="move-card-icon-img large-icon"
-                />
-                <div className="move-card-headings">
-                  <div className="move-card-mainline" style={{ color: selectedMoveLabelColor }}>
-                    {getMoveSentence(selectedMove)}
-                  </div>
-                  <div className="move-card-subline">
-                    {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
+              <div className="section-header-row">
+                <div className="move-card-topline">
+                  <img
+                    src={selectedMoveIcon}
+                    alt={selectedMove.label}
+                    className="move-card-icon-img large-icon"
+                  />
+                  <div className="move-card-headings">
+                    <div className="move-card-mainline" style={{ color: selectedMoveLabelColor }}>
+                      {getMoveSentence(selectedMove)}
+                    </div>
+                    <div className="move-card-subline">
+                      {getSideLabel(selectedMove)} • {getMoveTitle(selectedMove)}
+                    </div>
                   </div>
                 </div>
+
+                <button
+                  className="section-toggle-btn"
+                  onClick={() => setShowMoveMetrics((v) => !v)}
+                >
+                  {showMoveMetrics ? 'Hide' : 'Show'}
+                </button>
               </div>
 
-              <div className="move-card-metrics">
-                <div className="move-metric-box">
-                  <span className="metric-label">Best move</span>
-                  <strong>{detailState?.loading ? 'Loading…' : formatBestMove(detailState?.bestMove ?? selectedMove.bestMove)}</strong>
-                </div>
+              {showMoveMetrics ? (
+                <div className="move-card-metrics">
+                  <div className="move-metric-box">
+                    <span className="metric-label">Best move</span>
+                    <strong>{detailState?.loading ? 'Loading…' : formatBestMove(detailState?.bestMove ?? selectedMove.bestMove)}</strong>
+                  </div>
 
-                <div className="move-metric-box">
-                  <span className="metric-label">Eval</span>
-                  <strong>
-                    {detailState?.loading
-                      ? 'Loading…'
-                      : formatEval(detailState?.evalCp ?? undefined)}
-                  </strong>
-                </div>
+                  <div className="move-metric-box">
+                    <span className="metric-label">Eval</span>
+                    <strong>
+                      {detailState?.loading
+                        ? 'Loading…'
+                        : formatEval(detailState?.evalCp ?? undefined)}
+                    </strong>
+                  </div>
 
-                <div className="move-metric-box">
-                  <span className="metric-label">CPL</span>
-                  <strong>{selectedMove.centipawnLoss ?? '—'}</strong>
-                </div>
+                  <div className="move-metric-box">
+                    <span className="metric-label">CPL</span>
+                    <strong>{selectedMove.centipawnLoss ?? '—'}</strong>
+                  </div>
 
-                <div className="move-metric-box">
-                  <span className="metric-label">Opening</span>
-                  <strong>{summary?.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</strong>
+                  <div className="move-metric-box">
+                    <span className="metric-label">Opening</span>
+                    <strong>{summary?.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</strong>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="collapsed-note">Move details hidden</div>
+              )}
             </div>
           ) : (
             <div className="move-card empty-move-card">Select a move after analysis to see details.</div>
@@ -917,37 +934,51 @@ export default function App() {
 
           {detailState ? (
             <div className="engine-detail-card">
-              <div className="engine-detail-title">Engine lines</div>
+              <div className="section-header-row engine-section-header">
+                <div className="engine-detail-title">Engine lines</div>
+                <button
+                  className="section-toggle-btn"
+                  onClick={() => setShowEngineLines((v) => !v)}
+                >
+                  {showEngineLines ? 'Hide' : 'Show'}
+                </button>
+              </div>
 
-              {detailState.loading ? (
-                <div className="engine-detail-loading">Loading engine lines…</div>
-              ) : (
+              {showEngineLines ? (
                 <>
-                  <div className="engine-detail-summary">
-                    <div>
-                      <span className="engine-detail-label">Best move</span>
-                      <strong>{detailState.bestMove ?? '—'}</strong>
-                    </div>
-                    <div>
-                      <span className="engine-detail-label">Eval</span>
-                      <strong>{formatEval(detailState.evalCp ?? undefined)}</strong>
-                    </div>
-                  </div>
-
-                  <div className="engine-lines-list">
-                    {detailState.topLines.length ? (
-                      detailState.topLines.map((line, index) => (
-                        <div className="engine-line-row" key={index}>
-                          <span className="engine-line-rank">#{index + 1}</span>
-                          <span className="engine-line-move">{line.move}</span>
-                          <span className="engine-line-eval">{formatEval(line.cp, line.mate)}</span>
+                  {detailState.loading ? (
+                    <div className="engine-detail-loading">Loading engine lines…</div>
+                  ) : (
+                    <>
+                      <div className="engine-detail-summary">
+                        <div>
+                          <span className="engine-detail-label">Best move</span>
+                          <strong>{detailState.bestMove ?? '—'}</strong>
                         </div>
-                      ))
-                    ) : (
-                      <div className="engine-detail-loading">No lines available.</div>
-                    )}
-                  </div>
+                        <div>
+                          <span className="engine-detail-label">Eval</span>
+                          <strong>{formatEval(detailState.evalCp ?? undefined)}</strong>
+                        </div>
+                      </div>
+
+                      <div className="engine-lines-list">
+                        {detailState.topLines.length ? (
+                          detailState.topLines.map((line, index) => (
+                            <div className="engine-line-row" key={index}>
+                              <span className="engine-line-rank">#{index + 1}</span>
+                              <span className="engine-line-move">{line.move}</span>
+                              <span className="engine-line-eval">{formatEval(line.cp, line.mate)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="engine-detail-loading">No lines available.</div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
+              ) : (
+                <div className="collapsed-note">Engine lines hidden</div>
               )}
             </div>
           ) : null}
