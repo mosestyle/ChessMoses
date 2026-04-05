@@ -332,6 +332,33 @@ function uciToSan(fen: string, uci: string | null) {
   }
 }
 
+function synthesizeTerminalEngineResult(fen: string): EnginePositionResult | null {
+  try {
+    const chess = new Chess(fen);
+
+    if (!chess.isGameOver()) return null;
+
+    if (chess.isCheckmate()) {
+      const bestEvalCp = chess.turn() === 'b' ? 10000 : -10000;
+      return {
+        fen,
+        bestMove: null,
+        bestEvalCp,
+        topLines: []
+      };
+    }
+
+    return {
+      fen,
+      bestMove: null,
+      bestEvalCp: 0,
+      topLines: []
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function evaluateFenWithWorker(
   worker: Worker | null,
   fen: string,
@@ -349,9 +376,23 @@ async function evaluateFenWithWorker(
     let currentEval: number | null = null;
     const topLines: EnginePositionResult['topLines'] = [];
 
+    const timer = window.setTimeout(() => {
+      if (done) return;
+      done = true;
+      worker.onmessage = null;
+      worker.onerror = null;
+      resolve({
+        fen,
+        bestMove,
+        bestEvalCp: currentEval,
+        topLines
+      });
+    }, 5500);
+
     const finish = () => {
       if (done) return;
       done = true;
+      window.clearTimeout(timer);
       worker.onmessage = null;
       worker.onerror = null;
       resolve({
@@ -393,6 +434,7 @@ async function evaluateFenWithWorker(
     };
 
     worker.onerror = () => {
+      window.clearTimeout(timer);
       worker.onmessage = null;
       worker.onerror = null;
       reject(new Error('Stockfish worker failed during analysis.'));
@@ -403,10 +445,6 @@ async function evaluateFenWithWorker(
     worker.postMessage('setoption name MultiPV value ' + multiPv);
     worker.postMessage('position fen ' + fen);
     worker.postMessage('go depth ' + depth);
-
-    setTimeout(() => {
-      if (!done) worker.postMessage('stop');
-    }, 5000);
   });
 }
 
@@ -746,7 +784,12 @@ export default function App() {
 
       for (let i = 0; i < fens.length; i++) {
         setStatus('Analyzing move ' + (i + 1) + ' / ' + fens.length);
-        const result = await evaluateFenWithWorker(scanWorkerRef.current, fens[i], 10, 1);
+
+        const synthetic = synthesizeTerminalEngineResult(fens[i]);
+        const result = synthetic
+          ? synthetic
+          : await evaluateFenWithWorker(scanWorkerRef.current, fens[i], 10, 1);
+
         engineResults.push(result);
         setProgress({ done: i + 1, total: fens.length });
       }
@@ -767,7 +810,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Best move text is now clickable.
+            Imported PGNs now finish reliably.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
