@@ -255,6 +255,15 @@ textarea {
   border-radius: 12px;
   background: #0d121b;
 }
+.clickable-graph {
+  cursor: pointer;
+}
+.eval-top-zone {
+  fill: rgba(255, 255, 255, 0.03);
+}
+.eval-bottom-zone {
+  fill: rgba(0, 0, 0, 0.12);
+}
 .eval-midline {
   stroke: #6d7486;
   stroke-width: 1;
@@ -267,6 +276,13 @@ textarea {
   fill: none;
   stroke: #f0f0f0;
   stroke-width: 2.2;
+}
+.eval-hover-line {
+  stroke: rgba(123, 160, 255, 0.8);
+  stroke-width: 1.5;
+}
+.eval-hover-dot {
+  fill: #7aa2ff;
 }
 .eval-marker-line {
   stroke: #f4c542;
