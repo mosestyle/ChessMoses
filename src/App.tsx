@@ -192,7 +192,7 @@ function getSquareOverlayPosition(
   if (fileIndex === -1 || rank < 1 || rank > 8) return null;
 
   const squareSize = boardSize / 8;
-  const iconHalf = 12;
+  const iconHalf = 13;
 
   let col = fileIndex;
   let row = 8 - rank;
@@ -334,17 +334,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const element = boardWrapRef.current;
+    if (!element) return;
+
     const updateBoardSize = () => {
-      if (boardWrapRef.current) {
-        const width = boardWrapRef.current.offsetWidth;
-        if (width > 0) setBoardPixelSize(width);
-      }
+      const width = element.getBoundingClientRect().width;
+      if (width > 0) setBoardPixelSize(width);
     };
 
     updateBoardSize();
+
+    const observer = new ResizeObserver(() => {
+      updateBoardSize();
+    });
+
+    observer.observe(element);
     window.addEventListener('resize', updateBoardSize);
 
     return () => {
+      observer.disconnect();
       window.removeEventListener('resize', updateBoardSize);
     };
   }, []);
@@ -592,7 +600,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Icon now snaps to the top-right intersection point between the four squares.
+            Desktop and phone now use the same live board-size measurement.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
