@@ -91,21 +91,11 @@ textarea {
   border-radius: 14px;
   padding: 14px;
 }
-.helper-text, .mini, .empty-state, .collapsed-note {
+.helper-text, .mini, .empty-state {
   color: #aeb8d2;
   font-size: .92rem;
 }
-.collapsed-note {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #0d1422;
-  border: 1px solid #2c364d;
-}
-.helper-text {
-  margin-top: 10px;
-}
-.error-box, .fen-card, .progress-card, .accuracy-strip-card, .eval-card, .engine-detail-card {
+.error-box, .fen-card, .progress-card, .accuracy-strip-card, .eval-card {
   margin-top: 12px;
   border-radius: 14px;
   padding: 12px;
@@ -115,7 +105,7 @@ textarea {
   border: 1px solid #7b3040;
   color: #ffd7df;
 }
-.fen-card, .progress-card, .accuracy-strip-card, .eval-card, .engine-detail-card {
+.fen-card, .progress-card, .accuracy-strip-card, .eval-card {
   background: #111827;
   border: 1px solid #334155;
 }
@@ -173,34 +163,16 @@ textarea {
   border: 1px solid #405070;
   box-shadow: 0 12px 24px rgba(0,0,0,.25);
 }
+.compact-move-card {
+  margin-bottom: 12px;
+}
 .empty-move-card {
   color: #aeb8d2;
-}
-.section-header-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-.engine-section-header {
-  align-items: center;
-  margin-bottom: 10px;
-}
-.section-toggle-btn {
-  padding: 7px 12px;
-  font-size: .88rem;
-  border-radius: 10px;
-  border: 1px solid #44557a;
-  background: #25314a;
-  color: #edf2ff;
-  white-space: nowrap;
 }
 .move-card-topline {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  flex: 1;
-  min-width: 0;
 }
 .move-card-headings {
   flex: 1;
@@ -216,31 +188,6 @@ textarea {
   color: #9db0d3;
   font-size: .9rem;
 }
-.move-card-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-.move-metric-box {
-  background: #0d1422;
-  border: 1px solid #2c364d;
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-.metric-label {
-  display: block;
-  color: #8fa0c2;
-  font-size: .8rem;
-  margin-bottom: 4px;
-}
-.move-card-title {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 1.2rem;
-  font-weight: 700;
-}
 .move-card-icon-img {
   width: 28px;
   height: 28px;
@@ -250,71 +197,6 @@ textarea {
 .large-icon {
   width: 34px;
   height: 34px;
-}
-.best-move-line {
-  margin-top: 12px;
-  color: #5ee173;
-  font-size: 1.1rem;
-}
-.best-move-line span {
-  text-decoration: underline;
-  font-weight: 700;
-}
-.opening-line {
-  margin-top: 14px;
-  text-align: center;
-  color: #e6e6e6;
-  font-size: 1.1rem;
-}
-.engine-detail-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #dfe7ff;
-}
-.engine-detail-loading {
-  color: #aeb8d2;
-  font-size: .95rem;
-}
-.engine-detail-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.engine-detail-summary div {
-  background: #0d1422;
-  border: 1px solid #2c364d;
-  border-radius: 12px;
-  padding: 10px;
-}
-.engine-detail-label {
-  display: block;
-  color: #8fa0c2;
-  font-size: .8rem;
-  margin-bottom: 4px;
-}
-.engine-lines-list {
-  display: grid;
-  gap: 8px;
-}
-.engine-line-row {
-  display: grid;
-  grid-template-columns: 44px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  background: #0d1422;
-  border: 1px solid #2c364d;
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-.engine-line-rank {
-  color: #8fa0c2;
-}
-.engine-line-move {
-  font-weight: 700;
-}
-.engine-line-eval {
-  color: #dfe7ff;
 }
 .eval-card-title {
   font-weight: 700;
@@ -395,6 +277,12 @@ textarea {
   object-fit: contain;
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+.scrubber-spacer {
+  flex: 1 1 auto;
+}
+.graph-below-board {
+  margin-top: 12px;
 }
 .overview-cards-grid {
   display: grid;
@@ -578,20 +466,11 @@ textarea {
   .summary-grid,
   .counts-grid,
   .players-row,
-  .engine-detail-summary,
-  .move-card-metrics,
   .overview-cards-grid {
     grid-template-columns: 1fr;
   }
-  .section-header-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
   .topbar h1 {
     font-size: 1.6rem;
-  }
-  .move-card-title {
-    font-size: 1rem;
   }
   .move-card-mainline {
     font-size: 1rem;
@@ -606,5 +485,11 @@ textarea {
   .move-list-icon-img {
     width: 30px;
     height: 30px;
+  }
+  .scrubber {
+    align-items: stretch;
+  }
+  .scrubber-spacer {
+    display: none;
   }
 }
