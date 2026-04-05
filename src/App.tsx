@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import {
-  buildMoveTimelineFromPgn,
   buildReport,
   mergeAnalysis,
   parseFen,
   type AnalyzedMove,
-  type EnginePositionResult,
   type MoveLabel
 } from './lib/analyzer';
+import BrowserEngine, { type EngineEvalResult } from './lib/BrowserEngine';
 
 const DEMO_PGN = `[Event "Casual Game"]
 [Site "?"]
@@ -56,11 +55,6 @@ type SquareOverlayPosition = {
   left: number;
   top: number;
 };
-
-function createStockfishWorker(): Worker {
-  const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
-  return new Worker(workerPath);
-}
 
 function getHeadersFromPgn(pgn: string): PgnHeaders {
   const read = (name: string, fallback: string) => {
@@ -324,124 +318,9 @@ function uciToSan(fen: string, uci: string | null) {
   }
 }
 
-function synthesizeTerminalEngineResult(fen: string): EnginePositionResult | null {
-  try {
-    const chess = new Chess(fen);
-
-    if (!chess.isGameOver()) return null;
-
-    if (chess.isCheckmate()) {
-      const bestEvalCp = chess.turn() === 'b' ? 10000 : -10000;
-      return {
-        fen,
-        bestMove: null,
-        bestEvalCp,
-        topLines: []
-      };
-    }
-
-    return {
-      fen,
-      bestMove: null,
-      bestEvalCp: 0,
-      topLines: []
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function evaluateFenWithWorker(
-  worker: Worker | null,
-  fen: string,
-  depth: number,
-  multiPv: number
-): Promise<EnginePositionResult> {
-  return new Promise((resolve, reject) => {
-    if (!worker) {
-      reject(new Error('Stockfish worker not ready.'));
-      return;
-    }
-
-    let done = false;
-    let bestMove: string | null = null;
-    let currentEval: number | null = null;
-    const topLines: EnginePositionResult['topLines'] = [];
-
-    const timer = window.setTimeout(() => {
-      if (done) return;
-      done = true;
-      worker.onmessage = null;
-      worker.onerror = null;
-      resolve({
-        fen,
-        bestMove,
-        bestEvalCp: currentEval,
-        topLines
-      });
-    }, 6500);
-
-    const finish = () => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      worker.onmessage = null;
-      worker.onerror = null;
-      resolve({
-        fen,
-        bestMove,
-        bestEvalCp: currentEval,
-        topLines
-      });
-    };
-
-    worker.onmessage = (event: MessageEvent) => {
-      const line = String(event.data);
-
-      if (line.startsWith('info ')) {
-        const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-        const cpMatch = line.match(/ score cp (-?\d+)/);
-        const mateMatch = line.match(/ score mate (-?\d+)/);
-        const mpvMatch = line.match(/ multipv (\d+)/);
-
-        const move = moveMatch ? moveMatch[1] : undefined;
-        const cp = cpMatch ? Number(cpMatch[1]) : undefined;
-        const mate = mateMatch ? Number(mateMatch[1]) : undefined;
-        const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
-
-        if (move) {
-          topLines[mpv - 1] = { move, cp, mate };
-          if (mpv === 1) {
-            if (typeof cp === 'number') currentEval = cp;
-            else if (typeof mate === 'number') currentEval = Math.sign(mate) * 10000;
-          }
-        }
-      }
-
-      if (line.startsWith('bestmove')) {
-        const parts = line.split(' ');
-        bestMove = parts.length > 1 ? parts[1] : null;
-        finish();
-      }
-    };
-
-    worker.onerror = () => {
-      window.clearTimeout(timer);
-      worker.onmessage = null;
-      worker.onerror = null;
-      reject(new Error('Stockfish worker failed during analysis.'));
-    };
-
-    worker.postMessage('stop');
-    worker.postMessage('ucinewgame');
-    worker.postMessage('setoption name MultiPV value ' + multiPv);
-    worker.postMessage('position fen ' + fen);
-    worker.postMessage('go depth ' + depth);
-  });
-}
-
 export default function App() {
-  const scanWorkerRef = useRef<Worker | null>(null);
+  const engineRef = useRef<BrowserEngine | null>(null);
+  const runIdRef = useRef(0);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<SVGSVGElement | null>(null);
 
@@ -452,21 +331,21 @@ export default function App() {
   const [moves, setMoves] = useState<AnalyzedMove[]>([]);
   const [currentPly, setCurrentPly] = useState<number>(0);
   const [status, setStatus] = useState<string>('Ready');
-  const [fenResult, setFenResult] = useState<EnginePositionResult | null>(null);
+  const [fenResult, setFenResult] = useState<EngineEvalResult | null>(null);
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
   const [previewBestMove, setPreviewBestMove] = useState(false);
+  const [cacheHits, setCacheHits] = useState(0);
 
   useEffect(() => {
-    const scan = createStockfishWorker();
-    scanWorkerRef.current = scan;
-    scanWorkerRef.current.postMessage('uci');
+    const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
+    engineRef.current = new BrowserEngine(workerPath);
 
     return () => {
-      if (scanWorkerRef.current) scanWorkerRef.current.terminate();
+      engineRef.current?.terminate();
     };
   }, []);
 
@@ -744,6 +623,8 @@ export default function App() {
   }
 
   async function runAnalysis() {
+    const runId = ++runIdRef.current;
+
     setState('running');
     setError('');
     setMoves([]);
@@ -753,11 +634,17 @@ export default function App() {
     setMoveFilter('all');
     setHoveredGraphIndex(null);
     setPreviewBestMove(false);
+    setCacheHits(0);
 
     try {
+      if (!engineRef.current) throw new Error('Engine not ready.');
+
+      engineRef.current.stop();
+
       if (mode === 'fen') {
         setStatus('Analyzing FEN...');
-        const result = await evaluateFenWithWorker(scanWorkerRef.current, parseFen(input), 10, 1);
+        const result = await engineRef.current.evaluate(parseFen(input), 10, 1);
+        if (runId !== runIdRef.current) return;
         setFenResult(result);
         setStatus('Best move ' + (result.bestMove ?? '—') + ' | Eval ' + (result.bestEvalCp ?? '—'));
         setState('done');
@@ -767,27 +654,33 @@ export default function App() {
       const timeline = buildMoveTimelineFromPgn(input);
       const rawFens = [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[];
       const fens = Array.from(new Set(rawFens));
-      const engineResults: EnginePositionResult[] = [];
+      const engineResults: EngineEvalResult[] = [];
 
       setProgress({ done: 0, total: fens.length });
 
+      let localCacheHits = 0;
+
       for (let i = 0; i < fens.length; i++) {
+        if (runId !== runIdRef.current) return;
+
         setStatus('Analyzing move ' + (i + 1) + ' / ' + fens.length);
+        const result = await engineRef.current.evaluate(fens[i], 10, 1);
+        if (runId !== runIdRef.current) return;
 
-        const synthetic = synthesizeTerminalEngineResult(fens[i]);
-        const result = synthetic
-          ? synthetic
-          : await evaluateFenWithWorker(scanWorkerRef.current, fens[i], 10, 1);
-
+        if (result.cacheHit) localCacheHits += 1;
         engineResults.push(result);
+        setCacheHits(localCacheHits);
         setProgress({ done: i + 1, total: fens.length });
       }
 
       const analyzed = mergeAnalysis(input, engineResults);
+      if (runId !== runIdRef.current) return;
+
       setMoves(analyzed);
-      setStatus('Done. ' + analyzed.length + ' plies analyzed.');
+      setStatus('Done. ' + analyzed.length + ' plies analyzed. Cache hits: ' + localCacheHits);
       setState('done');
     } catch (e) {
+      if (runId !== runIdRef.current) return;
       setState('error');
       setError(e instanceof Error ? e.message : 'Analysis failed.');
     }
@@ -799,7 +692,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Now using Stockfish 17.1 Lite.
+            MosesChess-style worker reuse, cache, and stop logic added.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -863,6 +756,9 @@ export default function App() {
               </div>
               <div className="helper-text">
                 {progress.done} / {progress.total} positions analyzed
+              </div>
+              <div className="helper-text">
+                Cache hits: {cacheHits}
               </div>
             </div>
           ) : null}
