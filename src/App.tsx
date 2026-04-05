@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import {
+  buildMoveTimelineFromPgn,
   buildReport,
   mergeAnalysis,
   parseFen,
