@@ -369,6 +369,33 @@ textarea {
   pointer-events: none;
   transform: translate(-50%, -50%);
 }
+.overview-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.overview-card {
+  background: #111827;
+  border: 1px solid #30384d;
+  border-radius: 16px;
+  padding: 12px;
+}
+.overview-card-label {
+  color: #8fa0c2;
+  font-size: .82rem;
+  margin-bottom: 6px;
+}
+.overview-card-value {
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #eef3ff;
+}
+.overview-card-sub {
+  margin-top: 6px;
+  color: #aeb8d2;
+  font-size: .84rem;
+}
 .summary-grid, .counts-grid {
   display: grid;
   gap: 12px;
@@ -521,7 +548,12 @@ textarea {
   .app-shell {
     padding: 12px;
   }
-  .summary-grid, .counts-grid, .players-row, .engine-detail-summary, .move-card-metrics {
+  .summary-grid,
+  .counts-grid,
+  .players-row,
+  .engine-detail-summary,
+  .move-card-metrics,
+  .overview-cards-grid {
     grid-template-columns: 1fr;
   }
   .topbar h1 {
