@@ -405,6 +405,7 @@ export default function App() {
   const detailWorkerRef = useRef<Worker | null>(null);
   const detailWorkerUrlRef = useRef<string | null>(null);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
+  const graphRef = useRef<SVGSVGElement | null>(null);
   const detailRequestIdRef = useRef(0);
 
   const [mode, setMode] = useState<'pgn' | 'fen'>('pgn');
@@ -420,6 +421,7 @@ export default function App() {
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
   const [detailState, setDetailState] = useState<DetailState | null>(null);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
+  const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const scan = createStockfishWorker();
@@ -541,6 +543,15 @@ export default function App() {
     return { x, y, value };
   }, [moves, currentPly]);
 
+  const hoveredGraphPoint = useMemo(() => {
+    if (hoveredGraphIndex === null || hoveredGraphIndex < 0 || hoveredGraphIndex >= moves.length) return null;
+    const value = clampEval(moves[hoveredGraphIndex].playedEvalCp);
+    const x = moves.length === 1 ? graphWidth / 2 : (hoveredGraphIndex / (moves.length - 1)) * graphWidth;
+    const normalized = (value + 800) / 1600;
+    const y = graphHeight - normalized * graphHeight;
+    return { x, y, value, index: hoveredGraphIndex };
+  }, [hoveredGraphIndex, moves]);
+
   const moveSquareIconPosition = useMemo(() => {
     if (!selectedMove) return null;
     const lastMove = getLastMoveSquares(selectedMove.uci);
@@ -581,9 +592,7 @@ export default function App() {
       squareSize * 0.34
     );
 
-    return {
-      polygon
-    };
+    return { polygon };
   }, [selectedMove, orientation, boardPixelSize]);
 
   const filteredMoves = useMemo(() => {
@@ -624,6 +633,25 @@ export default function App() {
     if (found !== -1) {
       setCurrentPly(found + 1);
     }
+  }
+
+  function getGraphIndexFromClientX(clientX: number) {
+    if (!graphRef.current || !moves.length) return null;
+    const rect = graphRef.current.getBoundingClientRect();
+    const relativeX = Math.min(rect.width, Math.max(0, clientX - rect.left));
+    const ratio = rect.width === 0 ? 0 : relativeX / rect.width;
+    const index = Math.round(ratio * (moves.length - 1));
+    return Math.max(0, Math.min(moves.length - 1, index));
+  }
+
+  function handleGraphMove(event: React.MouseEvent<SVGSVGElement>) {
+    const index = getGraphIndexFromClientX(event.clientX);
+    if (index !== null) setHoveredGraphIndex(index);
+  }
+
+  function handleGraphClick(event: React.MouseEvent<SVGSVGElement>) {
+    const index = getGraphIndexFromClientX(event.clientX);
+    if (index !== null) setCurrentPly(index + 1);
   }
 
   useEffect(() => {
@@ -670,6 +698,7 @@ export default function App() {
     setProgress({ done: 0, total: 0 });
     setDetailState(null);
     setMoveFilter('all');
+    setHoveredGraphIndex(null);
 
     try {
       if (mode === 'fen') {
@@ -711,7 +740,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            Added move list jump buttons and filters for faster review.
+            Evaluation graph is now clickable and synced with the board.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -860,10 +889,39 @@ export default function App() {
           {moves.length ? (
             <div className="eval-card">
               <div className="eval-card-title">Evaluation Graph</div>
-              <svg viewBox={'0 0 ' + graphWidth + ' ' + graphHeight} className="eval-graph" preserveAspectRatio="none">
+              <svg
+                ref={graphRef}
+                viewBox={'0 0 ' + graphWidth + ' ' + graphHeight}
+                className="eval-graph clickable-graph"
+                preserveAspectRatio="none"
+                onMouseMove={handleGraphMove}
+                onMouseLeave={() => setHoveredGraphIndex(null)}
+                onClick={handleGraphClick}
+              >
+                <rect x="0" y="0" width={graphWidth} height={graphHeight / 2} className="eval-top-zone" />
+                <rect x="0" y={graphHeight / 2} width={graphWidth} height={graphHeight / 2} className="eval-bottom-zone" />
                 <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
                 {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
                 {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
+
+                {hoveredGraphPoint ? (
+                  <>
+                    <line
+                      x1={hoveredGraphPoint.x}
+                      y1="0"
+                      x2={hoveredGraphPoint.x}
+                      y2={graphHeight}
+                      className="eval-hover-line"
+                    />
+                    <circle
+                      cx={hoveredGraphPoint.x}
+                      cy={hoveredGraphPoint.y}
+                      r="5"
+                      className="eval-hover-dot"
+                    />
+                  </>
+                ) : null}
+
                 {selectedGraphPoint ? (
                   <>
                     <line
