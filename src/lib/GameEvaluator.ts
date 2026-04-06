@@ -26,6 +26,19 @@ export type GameEvaluator = {
   abort: () => void;
 };
 
+function getRecommendedEngineCount(maxEngineCount?: number) {
+  const hardware = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
+    ? navigator.hardwareConcurrency
+    : 2;
+
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+  const safeDefault = isMobile ? 1 : Math.min(2, Math.max(1, hardware - 1));
+  return Math.max(1, Math.min(maxEngineCount ?? safeDefault, safeDefault));
+}
+
 export default function createGameEvaluator(options: GameEvaluatorOptions): GameEvaluator {
   const controller = new AbortController();
   const { signal } = controller;
@@ -76,44 +89,79 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       return { results, cloudHits, localHits };
     }
 
-    const engineCount = Math.min(
-      options.maxEngineCount || 4,
+    const preferredEngineCount = Math.min(
+      getRecommendedEngineCount(options.maxEngineCount),
       remainingIndices.length
-    );
-
-    const engines = Array.from(
-      { length: engineCount },
-      () => new BrowserEngine(options.workerPath)
     );
 
     let queueIndex = 0;
 
-    async function runEngine(engine: BrowserEngine) {
-      while (queueIndex < remainingIndices.length) {
-        if (signal.aborted) break;
+    async function runParallelPass(engineCount: number) {
+      const engines = Array.from(
+        { length: engineCount },
+        () => new BrowserEngine(options.workerPath)
+      );
 
-        const index = remainingIndices[queueIndex];
-        queueIndex += 1;
+      try {
+        async function runEngine(engine: BrowserEngine) {
+          while (queueIndex < remainingIndices.length) {
+            if (signal.aborted) break;
 
-        const result = await engine.evaluate(
-          options.fens[index],
-          options.engineDepth,
-          options.multiPv
-        );
+            const index = remainingIndices[queueIndex];
+            queueIndex += 1;
 
-        if (signal.aborted) break;
+            const result = await engine.evaluate(
+              options.fens[index],
+              options.engineDepth,
+              options.multiPv
+            );
 
-        results[index] = result;
-        localHits += 1;
-        done += 1;
-        reportProgress();
+            if (signal.aborted) break;
+
+            results[index] = result;
+            localHits += 1;
+            done += 1;
+            reportProgress();
+          }
+        }
+
+        await Promise.all(engines.map(runEngine));
+      } finally {
+        engines.forEach((engine) => engine.terminate());
+      }
+    }
+
+    async function runSequentialFallback() {
+      const engine = new BrowserEngine(options.workerPath);
+
+      try {
+        for (const index of remainingIndices) {
+          if (signal.aborted) break;
+          if (results[index]) continue;
+
+          const result = await engine.evaluate(
+            options.fens[index],
+            options.engineDepth,
+            options.multiPv
+          );
+
+          if (signal.aborted) break;
+
+          results[index] = result;
+          localHits += 1;
+          done += 1;
+          reportProgress();
+        }
+      } finally {
+        engine.terminate();
       }
     }
 
     try {
-      await Promise.all(engines.map(runEngine));
-    } finally {
-      engines.forEach((engine) => engine.terminate());
+      await runParallelPass(preferredEngineCount);
+    } catch {
+      if (signal.aborted) throw new Error('aborted');
+      await runSequentialFallback();
     }
 
     if (signal.aborted) throw new Error('aborted');
