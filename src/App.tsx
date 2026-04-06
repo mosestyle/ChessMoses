@@ -29,7 +29,6 @@ const LABELS = [
   'Critical',
   'Best',
   'Excellent',
-  'Good',
   'Okay',
   'Inaccuracy',
   'Mistake',
@@ -79,25 +78,25 @@ function getHeadersFromPgn(pgn: string): PgnHeaders {
 function getLabelColor(label: MoveLabel) {
   switch (label) {
     case 'Brilliant':
-      return '#19d3da';
+      return '#1baaa6';
     case 'Critical':
-      return '#7aa2ff';
+      return '#5b8baf';
     case 'Best':
-      return '#8bc34a';
+      return '#98bc49';
     case 'Excellent':
-      return '#7ed957';
-    case 'Good':
-      return '#a9d36e';
+      return '#98bc49';
     case 'Okay':
-      return '#c7d36f';
+      return '#97af8b';
     case 'Inaccuracy':
-      return '#f4c542';
+      return '#f4bf44';
     case 'Mistake':
-      return '#ff9f43';
+      return '#e28c28';
     case 'Blunder':
-      return '#ff4d4f';
+      return '#c93230';
+    case 'Forced':
+      return '#97af8b';
     case 'Theory':
-      return '#d1b08c';
+      return '#a88764';
     default:
       return '#cccccc';
   }
@@ -114,8 +113,6 @@ function getClassificationIcon(label: MoveLabel) {
       return base + 'best.png';
     case 'Excellent':
       return base + 'excellent.png';
-    case 'Good':
-      return base + 'excellent.png';
     case 'Okay':
       return base + 'okay.png';
     case 'Inaccuracy':
@@ -124,6 +121,8 @@ function getClassificationIcon(label: MoveLabel) {
       return base + 'mistake.png';
     case 'Blunder':
       return base + 'blunder.png';
+    case 'Forced':
+      return base + 'forced.png';
     case 'Theory':
       return base + 'theory.png';
     default:
@@ -647,7 +646,7 @@ export default function App() {
 
       if (mode === 'fen') {
         setStatus('Analyzing FEN...');
-        const result = await singleEngineRef.current.evaluate(parseFen(input), 10, 1);
+        const result = await singleEngineRef.current.evaluate(parseFen(input), 10, 2);
         if (runId !== runIdRef.current) return;
         setFenResult(result);
         setStatus('Best move ' + (result.bestMove ?? '—') + ' | Eval ' + (result.bestEvalCp ?? '—'));
@@ -667,7 +666,7 @@ export default function App() {
         })),
         workerPath,
         engineDepth: 10,
-        multiPv: 1,
+        multiPv: 2,
         maxEngineCount: 2,
         onProgress: (nextProgress) => {
           if (runId !== runIdRef.current) return;
@@ -1046,44 +1045,35 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="counts-grid">
-                <div>
-                  <h3>{headers.white}</h3>
-                  {LABELS.map((label) => {
-                    return (
-                      <div key={'w-' + label} className="count-row">
-                        <span className="count-label-with-icon">
-                          <img
-                            src={getClassificationIcon(label)}
-                            alt={label}
-                            className="report-icon-img"
-                          />
-                          <span style={{ color: getLabelColor(label) }}>{label}</span>
-                        </span>
-                        <strong>{summary.white.counts[label]}</strong>
-                      </div>
-                    );
-                  })}
+              <div className="classification-summary-card">
+                <div className="classification-summary-title">Accuracies</div>
+
+                <div className="classification-accuracy-strip">
+                  <div className="classification-accuracy-left">{summary.white.accuracy}%</div>
+                  <div className="classification-accuracy-right">{summary.black.accuracy}%</div>
                 </div>
 
-                <div>
-                  <h3>{headers.black}</h3>
-                  {LABELS.map((label) => {
-                    return (
-                      <div key={'b-' + label} className="count-row">
-                        <span className="count-label-with-icon">
-                          <img
-                            src={getClassificationIcon(label)}
-                            alt={label}
-                            className="report-icon-img"
-                          />
-                          <span style={{ color: getLabelColor(label) }}>{label}</span>
-                        </span>
-                        <strong>{summary.black.counts[label]}</strong>
-                      </div>
-                    );
-                  })}
+                <div className="classification-summary-header">
+                  <span />
+                  <span>{headers.white}</span>
+                  <span />
+                  <span>{headers.black}</span>
                 </div>
+
+                {LABELS.map((label) => (
+                  <div key={label} className="classification-summary-row" style={{ color: getLabelColor(label) }}>
+                    <div className="classification-summary-name">{label}</div>
+                    <div className="classification-summary-count">{summary.white.counts[label]}</div>
+                    <div className="classification-summary-icon-cell">
+                      <img
+                        src={getClassificationIcon(label)}
+                        alt={label}
+                        className="classification-summary-icon"
+                      />
+                    </div>
+                    <div className="classification-summary-count">{summary.black.counts[label]}</div>
+                  </div>
+                ))}
               </div>
 
               <div className="move-list">
