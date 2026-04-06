@@ -656,13 +656,16 @@ export default function App() {
       }
 
       const timeline = buildMoveTimelineFromPgn(input);
-      const rawFens = [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[];
-      const fens = Array.from(new Set(rawFens));
 
       const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17-lite-single.js';
 
       const evaluator = createGameEvaluator({
-        fens,
+        initialFen: timeline[0]?.fenBefore || new Chess().fen(),
+        timeline: timeline.map((node) => ({
+          fenBefore: node.fenBefore,
+          fenAfter: node.fenAfter,
+          uci: node.uci
+        })),
         workerPath,
         engineDepth: 10,
         multiPv: 1,
@@ -671,7 +674,7 @@ export default function App() {
           if (runId !== runIdRef.current) return;
           setProgress(nextProgress);
           setStatus(
-            'Analyzing move ' + nextProgress.done + ' / ' + nextProgress.total
+            'Analyzing move ' + Math.floor(nextProgress.done) + ' / ' + nextProgress.total
             + ' • cloud ' + nextProgress.cloudHits
             + ' • local ' + nextProgress.localHits
           );
@@ -769,7 +772,7 @@ export default function App() {
                 <div className="progress-fill" style={{ width: progressPercent + '%' }} />
               </div>
               <div className="helper-text">
-                {progress.done} / {progress.total} positions analyzed
+                {Math.floor(progress.done)} / {progress.total} positions analyzed
               </div>
               <div className="helper-text">
                 Cloud hits: {progress.cloudHits} • Local hits: {progress.localHits}
