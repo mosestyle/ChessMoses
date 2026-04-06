@@ -32,8 +32,8 @@ function getRecommendedEngineCount(maxEngineCount?: number) {
     : 2;
 
   const isMobile =
-    typeof navigator !== 'undefined' &&
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    typeof navigator !== 'undefined'
+    && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
   const safeDefault = isMobile ? 1 : Math.min(2, Math.max(1, hardware - 1));
   return Math.max(1, Math.min(maxEngineCount ?? safeDefault, safeDefault));
@@ -94,11 +94,38 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       remainingIndices.length
     );
 
-    let queueIndex = 0;
+    async function runSequential(indices: number[]) {
+      const engine = new BrowserEngine(options.workerPath);
 
-    async function runParallelPass(engineCount: number) {
+      try {
+        for (const index of indices) {
+          if (signal.aborted) break;
+          if (results[index]) continue;
+
+          const result = await engine.evaluate(
+            options.fens[index],
+            options.engineDepth,
+            options.multiPv
+          );
+
+          if (signal.aborted) break;
+
+          results[index] = result;
+          localHits += 1;
+          done += 1;
+          reportProgress();
+        }
+      } finally {
+        engine.terminate();
+      }
+    }
+
+    if (preferredEngineCount <= 1) {
+      await runSequential(remainingIndices);
+    } else {
+      let queueIndex = 0;
       const engines = Array.from(
-        { length: engineCount },
+        { length: preferredEngineCount },
         () => new BrowserEngine(options.workerPath)
       );
 
@@ -126,42 +153,22 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
         }
 
         await Promise.all(engines.map(runEngine));
-      } finally {
+      } catch {
         engines.forEach((engine) => engine.terminate());
-      }
-    }
 
-    async function runSequentialFallback() {
-      const engine = new BrowserEngine(options.workerPath);
-
-      try {
-        for (const index of remainingIndices) {
-          if (signal.aborted) break;
-          if (results[index]) continue;
-
-          const result = await engine.evaluate(
-            options.fens[index],
-            options.engineDepth,
-            options.multiPv
-          );
-
-          if (signal.aborted) break;
-
-          results[index] = result;
-          localHits += 1;
-          done += 1;
-          reportProgress();
+        const unfinished = remainingIndices.filter((index) => !results[index]);
+        if (!signal.aborted && unfinished.length) {
+          await runSequential(unfinished);
         }
       } finally {
-        engine.terminate();
+        engines.forEach((engine) => {
+          try {
+            engine.terminate();
+          } catch {
+            // ignore
+          }
+        });
       }
-    }
-
-    try {
-      await runParallelPass(preferredEngineCount);
-    } catch {
-      if (signal.aborted) throw new Error('aborted');
-      await runSequentialFallback();
     }
 
     if (signal.aborted) throw new Error('aborted');
