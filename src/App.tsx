@@ -60,13 +60,6 @@ type SquareOverlayPosition = {
   top: number;
 };
 
-function getLiteWorkerPath() {
-  const basePath = import.meta.env.BASE_URL;
-  const pageOrigin = window.location.origin;
-  const wasmUrl = `${pageOrigin}${basePath}engine/stockfish-17-lite-single.wasm`;
-  return `${basePath}engine/stockfish-17-lite-single.js#${encodeURIComponent(wasmUrl)},worker`;
-}
-
 function getHeadersFromPgn(pgn: string): PgnHeaders {
   const read = (name: string, fallback: string) => {
     const regex = new RegExp('\\[' + name + '\\s+"([^"]*)"\\]');
@@ -352,7 +345,7 @@ export default function App() {
   const [previewBestMove, setPreviewBestMove] = useState(false);
 
   useEffect(() => {
-    const workerPath = getLiteWorkerPath();
+    const workerPath = import.meta.env.BASE_URL + 'engines/stockfish-17-lite-single.js';
     singleEngineRef.current = new BrowserEngine(workerPath);
 
     return () => {
@@ -663,7 +656,7 @@ export default function App() {
       }
 
       const timeline = buildMoveTimelineFromPgn(input);
-      const workerPath = getLiteWorkerPath();
+      const workerPath = import.meta.env.BASE_URL + 'engines/stockfish-17-lite-single.js';
 
       const evaluator = createGameEvaluator({
         initialFen: timeline[0]?.fenBefore || new Chess().fen(),
@@ -715,7 +708,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            WintrChess-style cloud eval + parallel local engines added.
+            WintrChess-style cloud eval + local engines.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
