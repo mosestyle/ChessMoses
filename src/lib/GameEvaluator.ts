@@ -1,8 +1,15 @@
 import BrowserEngine, { type EngineEvalResult } from './BrowserEngine';
 import { getCloudEvaluation } from './cloudEvaluate';
 
+type TimelineNode = {
+  fenBefore: string;
+  fenAfter: string;
+  uci: string;
+};
+
 type GameEvaluatorOptions = {
-  fens: string[];
+  initialFen: string;
+  timeline: TimelineNode[];
   workerPath: string;
   engineDepth: number;
   multiPv: number;
@@ -44,7 +51,8 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
   const { signal } = controller;
 
   async function evaluate(): Promise<GameEvaluationSummary> {
-    const results: EngineEvalResult[] = new Array(options.fens.length);
+    const positions = [options.initialFen, ...options.timeline.map((node) => node.fenAfter)];
+    const results: EngineEvalResult[] = new Array(positions.length);
 
     let done = 0;
     let cloudHits = 0;
@@ -53,7 +61,7 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
     function reportProgress() {
       options.onProgress?.({
         done,
-        total: options.fens.length,
+        total: positions.length,
         cloudHits,
         localHits
       });
@@ -61,11 +69,11 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
 
     let cutoffIndex = 0;
 
-    for (let i = 0; i < options.fens.length; i++) {
+    for (let i = 0; i < positions.length; i++) {
       if (signal.aborted) throw new Error('aborted');
 
       try {
-        const cloud = await getCloudEvaluation(options.fens[i], options.multiPv);
+        const cloud = await getCloudEvaluation(positions[i], options.multiPv);
 
         if (!cloud) break;
         if (cloud.depth < options.engineDepth) break;
@@ -81,7 +89,7 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       }
     }
 
-    const remainingIndices = options.fens
+    const remainingIndices = positions
       .map((_, index) => index)
       .slice(cutoffIndex);
 
@@ -89,91 +97,93 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       return { results, cloudHits, localHits };
     }
 
-    const preferredEngineCount = Math.min(
+    const engineCount = Math.min(
       getRecommendedEngineCount(options.maxEngineCount),
-      remainingIndices.length
+      Math.max(1, remainingIndices.length)
     );
 
-    async function runSequential(indices: number[]) {
-      const engine = new BrowserEngine(options.workerPath);
+    let enginesResting = 0;
+    let positionIndex = Math.max(cutoffIndex - 1, 0);
 
-      try {
-        for (const index of indices) {
-          if (signal.aborted) break;
-          if (results[index]) continue;
+    return await new Promise<GameEvaluationSummary>((resolve, reject) => {
+      const engines: BrowserEngine[] = [];
 
-          const result = await engine.evaluate(
-            options.fens[index],
-            options.engineDepth,
-            options.multiPv
-          );
+      function finishIfDone() {
+        if (enginesResting === engineCount) {
+          resolve({ results, cloudHits, localHits });
+        }
+      }
 
-          if (signal.aborted) break;
+      function evaluateNextPosition(engine: BrowserEngine) {
+        const currentIndex = positionIndex;
 
-          results[index] = result;
+        if (signal.aborted) {
+          reject(new Error('aborted'));
+          return;
+        }
+
+        if (positionIndex >= positions.length) {
+          engine.terminate();
+          enginesResting += 1;
+          finishIfDone();
+          return;
+        }
+
+        if (results[currentIndex]) {
+          positionIndex += 1;
+          evaluateNextPosition(engine);
+          return;
+        }
+
+        const movesSoFar = options.timeline
+          .slice(0, currentIndex)
+          .map((node) => node.uci);
+
+        engine.setPosition(options.initialFen, movesSoFar);
+
+        engine.evaluate(
+          positions[currentIndex],
+          options.engineDepth,
+          options.multiPv,
+          undefined,
+          (line) => {
+            const localProgress = line.depth === 0 ? 1 : line.depth / options.engineDepth;
+            const fractionalDone = done - localHits + localHits + localProgress;
+            options.onProgress?.({
+              done: fractionalDone,
+              total: positions.length,
+              cloudHits,
+              localHits
+            });
+          }
+        ).then((result) => {
+          if (signal.aborted) return;
+
+          results[currentIndex] = result;
           localHits += 1;
           done += 1;
           reportProgress();
-        }
-      } finally {
-        engine.terminate();
-      }
-    }
 
-    if (preferredEngineCount <= 1) {
-      await runSequential(remainingIndices);
-    } else {
-      let queueIndex = 0;
-      const engines = Array.from(
-        { length: preferredEngineCount },
-        () => new BrowserEngine(options.workerPath)
-      );
-
-      try {
-        async function runEngine(engine: BrowserEngine) {
-          while (queueIndex < remainingIndices.length) {
-            if (signal.aborted) break;
-
-            const index = remainingIndices[queueIndex];
-            queueIndex += 1;
-
-            const result = await engine.evaluate(
-              options.fens[index],
-              options.engineDepth,
-              options.multiPv
-            );
-
-            if (signal.aborted) break;
-
-            results[index] = result;
-            localHits += 1;
-            done += 1;
-            reportProgress();
-          }
-        }
-
-        await Promise.all(engines.map(runEngine));
-      } catch {
-        engines.forEach((engine) => engine.terminate());
-
-        const unfinished = remainingIndices.filter((index) => !results[index]);
-        if (!signal.aborted && unfinished.length) {
-          await runSequential(unfinished);
-        }
-      } finally {
-        engines.forEach((engine) => {
-          try {
-            engine.terminate();
-          } catch {
-            // ignore
-          }
+          evaluateNextPosition(engine);
+        }).catch((error) => {
+          reject(error);
         });
+
+        positionIndex += 1;
       }
-    }
 
-    if (signal.aborted) throw new Error('aborted');
+      for (let i = 0; i < engineCount; i++) {
+        const engine = new BrowserEngine(options.workerPath);
+        engines.push(engine);
 
-    return { results, cloudHits, localHits };
+        evaluateNextPosition(engine);
+      }
+
+      controller.signal.addEventListener('abort', () => {
+        engines.forEach((engine) => engine.terminate());
+        reject(new Error('aborted'));
+      });
+    });
   }
 
   return {
