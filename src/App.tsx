@@ -10,6 +10,7 @@ import {
   type MoveLabel
 } from './lib/analyzer';
 import BrowserEngine, { type EngineEvalResult } from './lib/BrowserEngine';
+import createGameEvaluator, { type GameEvaluator } from './lib/GameEvaluator';
 
 const DEMO_PGN = `[Event "Casual Game"]
 [Site "?"]
@@ -50,6 +51,8 @@ type PgnHeaders = {
 type AnalyzeProgress = {
   done: number;
   total: number;
+  cloudHits: number;
+  localHits: number;
 };
 
 type SquareOverlayPosition = {
@@ -320,7 +323,8 @@ function uciToSan(fen: string, uci: string | null) {
 }
 
 export default function App() {
-  const engineRef = useRef<BrowserEngine | null>(null);
+  const singleEngineRef = useRef<BrowserEngine | null>(null);
+  const activeEvaluatorRef = useRef<GameEvaluator | null>(null);
   const runIdRef = useRef(0);
   const boardWrapRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<SVGSVGElement | null>(null);
@@ -334,19 +338,19 @@ export default function App() {
   const [status, setStatus] = useState<string>('Ready');
   const [fenResult, setFenResult] = useState<EngineEvalResult | null>(null);
   const [orientation, setOrientation] = useState<Orientation>('white');
-  const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0 });
+  const [progress, setProgress] = useState<AnalyzeProgress>({ done: 0, total: 0, cloudHits: 0, localHits: 0 });
   const [boardPixelSize, setBoardPixelSize] = useState<number>(520);
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
   const [previewBestMove, setPreviewBestMove] = useState(false);
-  const [cacheHits, setCacheHits] = useState(0);
 
   useEffect(() => {
     const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
-    engineRef.current = new BrowserEngine(workerPath);
+    singleEngineRef.current = new BrowserEngine(workerPath);
 
     return () => {
-      engineRef.current?.terminate();
+      activeEvaluatorRef.current?.abort();
+      singleEngineRef.current?.terminate();
     };
   }, []);
 
@@ -631,20 +635,19 @@ export default function App() {
     setMoves([]);
     setFenResult(null);
     setCurrentPly(0);
-    setProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 0, cloudHits: 0, localHits: 0 });
     setMoveFilter('all');
     setHoveredGraphIndex(null);
     setPreviewBestMove(false);
-    setCacheHits(0);
 
     try {
-      if (!engineRef.current) throw new Error('Engine not ready.');
+      if (!singleEngineRef.current) throw new Error('Engine not ready.');
 
-      engineRef.current.stop();
+      activeEvaluatorRef.current?.abort();
 
       if (mode === 'fen') {
         setStatus('Analyzing FEN...');
-        const result = await engineRef.current.evaluate(parseFen(input), 10, 1);
+        const result = await singleEngineRef.current.evaluate(parseFen(input), 10, 1);
         if (runId !== runIdRef.current) return;
         setFenResult(result);
         setStatus('Best move ' + (result.bestMove ?? '—') + ' | Eval ' + (result.bestEvalCp ?? '—'));
@@ -655,33 +658,43 @@ export default function App() {
       const timeline = buildMoveTimelineFromPgn(input);
       const rawFens = [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[];
       const fens = Array.from(new Set(rawFens));
-      const engineResults: EngineEvalResult[] = [];
 
-      setProgress({ done: 0, total: fens.length });
+      const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
 
-      let localCacheHits = 0;
+      const evaluator = createGameEvaluator({
+        fens,
+        workerPath,
+        engineDepth: 10,
+        multiPv: 1,
+        maxEngineCount: 4,
+        onProgress: (nextProgress) => {
+          if (runId !== runIdRef.current) return;
+          setProgress(nextProgress);
+          setStatus(
+            'Analyzing move ' + nextProgress.done + ' / ' + nextProgress.total
+            + ' • cloud ' + nextProgress.cloudHits
+            + ' • local ' + nextProgress.localHits
+          );
+        }
+      });
 
-      for (let i = 0; i < fens.length; i++) {
-        if (runId !== runIdRef.current) return;
+      activeEvaluatorRef.current = evaluator;
 
-        setStatus('Analyzing move ' + (i + 1) + ' / ' + fens.length);
-        const result = await engineRef.current.evaluate(fens[i], 10, 1);
-        if (runId !== runIdRef.current) return;
-
-        if (result.cacheHit) localCacheHits += 1;
-        engineResults.push(result);
-        setCacheHits(localCacheHits);
-        setProgress({ done: i + 1, total: fens.length });
-      }
-
-      const analyzed = mergeAnalysis(input, engineResults);
+      const evaluation = await evaluator.evaluate();
       if (runId !== runIdRef.current) return;
 
+      const analyzed = mergeAnalysis(input, evaluation.results);
       setMoves(analyzed);
-      setStatus('Done. ' + analyzed.length + ' plies analyzed. Cache hits: ' + localCacheHits);
+      setStatus(
+        'Done. ' + analyzed.length
+        + ' plies analyzed. Cloud: ' + evaluation.cloudHits
+        + ' • Local: ' + evaluation.localHits
+      );
       setState('done');
     } catch (e) {
       if (runId !== runIdRef.current) return;
+      if (e instanceof Error && e.message === 'aborted') return;
+
       setState('error');
       setError(e instanceof Error ? e.message : 'Analysis failed.');
     }
@@ -693,7 +706,7 @@ export default function App() {
         <div>
           <h1>Chess Analysis Lite</h1>
           <p>
-            MosesChess-style worker reuse, cache, and stop logic added.
+            WintrChess-style cloud eval + parallel local engines added.
           </p>
         </div>
         <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
@@ -759,7 +772,7 @@ export default function App() {
                 {progress.done} / {progress.total} positions analyzed
               </div>
               <div className="helper-text">
-                Cache hits: {cacheHits}
+                Cloud hits: {progress.cloudHits} • Local hits: {progress.localHits}
               </div>
             </div>
           ) : null}
