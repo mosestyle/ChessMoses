@@ -76,8 +76,7 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
         const cloud = await getCloudEvaluation(positions[i], options.multiPv);
 
         if (!cloud) break;
-        if (cloud.depth < options.engineDepth) break;
-        if (cloud.lineCount < options.multiPv) break;
+        if (cloud.lineCount < 1) break;
 
         results[i] = cloud.result;
         cloudHits += 1;
@@ -145,7 +144,7 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
           positions[currentIndex],
           options.engineDepth,
           options.multiPv,
-          undefined,
+          3000,
           (line) => {
             const localProgress = line.depth === 0 ? 1 : line.depth / options.engineDepth;
             const fractionalDone = done - localHits + localHits + localProgress;
