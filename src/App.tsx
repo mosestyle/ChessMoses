@@ -666,7 +666,7 @@ export default function App() {
         workerPath,
         engineDepth: 10,
         multiPv: 1,
-        maxEngineCount: 4,
+        maxEngineCount: 2,
         onProgress: (nextProgress) => {
           if (runId !== runIdRef.current) return;
           setProgress(nextProgress);
