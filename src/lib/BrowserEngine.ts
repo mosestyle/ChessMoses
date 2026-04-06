@@ -141,10 +141,18 @@ export default class BrowserEngine {
         }
       }
 
-      function onErrorReceived() {
+      function onErrorReceived(event: ErrorEvent) {
         worker.removeEventListener('message', onMessageReceived);
         worker.removeEventListener('error', onErrorReceived);
-        reject(new Error('Engine worker failed during evaluation.'));
+
+        const details = [
+          event.message || 'Unknown worker error',
+          event.filename ? `File: ${event.filename}` : '',
+          typeof event.lineno === 'number' ? `Line: ${event.lineno}` : '',
+          typeof event.colno === 'number' ? `Column: ${event.colno}` : ''
+        ].filter(Boolean).join(' | ');
+
+        reject(new Error(details || 'Engine worker failed during evaluation.'));
       }
 
       worker.addEventListener('message', onMessageReceived);
@@ -160,7 +168,7 @@ export default class BrowserEngine {
     try {
       await this.consumeLogs('', (message) => message.startsWith('bestmove'));
     } catch {
-      // ignore, caller will recreate or handle later
+      // ignore
     }
 
     this.evaluating = false;
