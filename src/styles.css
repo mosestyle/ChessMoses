@@ -464,6 +464,87 @@ textarea {
   object-fit: contain;
   flex: 0 0 auto;
 }
+
+.classification-summary-card {
+  margin-top: 18px;
+  border: 1px solid rgba(120, 140, 255, 0.16);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.classification-summary-title {
+  text-align: center;
+  font-size: 1.35rem;
+  padding: 14px 12px 10px;
+  color: #f3f6ff;
+}
+
+.classification-accuracy-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 14px 14px;
+  overflow: hidden;
+}
+
+.classification-accuracy-left,
+.classification-accuracy-right {
+  text-align: center;
+  font-size: 2rem;
+  line-height: 1.1;
+  padding: 14px 8px;
+}
+
+.classification-accuracy-left {
+  background: #f0f0f0;
+  color: #000;
+}
+
+.classification-accuracy-right {
+  background: #000;
+  color: #fff;
+}
+
+.classification-summary-header {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 0.55fr 0.7fr;
+  align-items: center;
+  padding: 6px 14px 10px;
+  color: #dfe7ff;
+  font-weight: 700;
+  text-align: center;
+}
+
+.classification-summary-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 0.55fr 0.7fr;
+  align-items: center;
+  padding: 8px 14px;
+}
+
+.classification-summary-name {
+  text-align: left;
+  font-size: 1.02rem;
+}
+
+.classification-summary-count {
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.classification-summary-icon-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.classification-summary-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;
@@ -504,5 +585,27 @@ textarea {
   }
   .scrubber-spacer {
     display: none;
+  }
+  .classification-summary-title {
+    font-size: 1.2rem;
+  }
+  .classification-accuracy-left,
+  .classification-accuracy-right {
+    font-size: 1.65rem;
+    padding: 12px 6px;
+  }
+  .classification-summary-row,
+  .classification-summary-header {
+    grid-template-columns: 1.2fr 0.6fr 0.5fr 0.6fr;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .classification-summary-name,
+  .classification-summary-count {
+    font-size: .96rem;
+  }
+  .classification-summary-icon {
+    width: 25px;
+    height: 25px;
   }
 }
