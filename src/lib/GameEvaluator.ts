@@ -12,6 +12,7 @@ type GameEvaluatorOptions = {
   timeline: TimelineNode[];
   workerPath: string;
   engineDepth: number;
+  engineTimeLimitMs?: number;
   multiPv: number;
   maxEngineCount?: number;
   onProgress?: (progress: {
@@ -20,6 +21,7 @@ type GameEvaluatorOptions = {
     cloudHits: number;
     localHits: number;
   }) => void;
+  verbose?: boolean;
 };
 
 export type GameEvaluationSummary = {
@@ -33,39 +35,8 @@ export type GameEvaluator = {
   abort: () => void;
 };
 
-function isMobileDevice() {
-  return (
-    typeof navigator !== 'undefined'
-    && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-  );
-}
-
-function getRecommendedEngineCount(maxEngineCount?: number) {
-  const hardware = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
-    ? navigator.hardwareConcurrency
-    : 2;
-
-  const isMobile = isMobileDevice();
-  const safeDefault = isMobile ? 1 : Math.min(2, Math.max(1, hardware - 1));
-  return Math.max(1, Math.min(maxEngineCount ?? safeDefault, safeDefault));
-}
-
-function makePlaceholderResult(
-  fen: string,
-  previous: EngineEvalResult | null
-): EngineEvalResult {
-  return {
-    fen,
-    bestMove: null,
-    bestEvalCp: previous?.bestEvalCp ?? 0,
-    topLines: [],
-    cacheHit: false
-  };
-}
-
 export default function createGameEvaluator(options: GameEvaluatorOptions): GameEvaluator {
   const controller = new AbortController();
-  const { signal } = controller;
 
   async function evaluate(): Promise<GameEvaluationSummary> {
     const positions = [options.initialFen, ...options.timeline.map((node) => node.fenAfter)];
@@ -75,9 +46,9 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
     let cloudHits = 0;
     let localHits = 0;
 
-    function reportProgress() {
+    function reportProgress(progressDone = done) {
       options.onProgress?.({
-        done,
+        done: progressDone,
         total: positions.length,
         cloudHits,
         localHits
@@ -87,13 +58,12 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
     let cutoffIndex = 0;
 
     for (let i = 0; i < positions.length; i++) {
-      if (signal.aborted) throw new Error('aborted');
+      if (controller.signal.aborted) throw new Error('aborted');
 
       try {
         const cloud = await getCloudEvaluation(positions[i], options.multiPv);
-
         if (!cloud) break;
-        if (cloud.lineCount < 1) break;
+        if (cloud.lineCount < options.multiPv) break;
 
         results[i] = cloud.result;
         cloudHits += 1;
@@ -105,34 +75,14 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       }
     }
 
-    const remainingIndices = positions
-      .map((_, index) => index)
-      .slice(cutoffIndex);
-
-    if (!remainingIndices.length) {
-      return { results, cloudHits, localHits };
-    }
-
-    if (isMobileDevice()) {
-      let previous = cutoffIndex > 0 ? results[cutoffIndex - 1] : null;
-
-      for (const index of remainingIndices) {
-        results[index] = makePlaceholderResult(positions[index], previous);
-        previous = results[index];
-        done += 1;
-      }
-
-      reportProgress();
-      return { results, cloudHits, localHits };
-    }
-
+    const evaluatedCount = results.filter(Boolean).length;
     const engineCount = Math.min(
-      getRecommendedEngineCount(options.maxEngineCount),
-      Math.max(1, remainingIndices.length)
+      options.maxEngineCount || 1,
+      (positions.length - evaluatedCount) + 1
     );
 
     let enginesResting = 0;
-    let positionIndex = Math.max(cutoffIndex - 1, 0);
+    let positionIndex = Math.max(evaluatedCount - 1, 0);
 
     return await new Promise<GameEvaluationSummary>((resolve, reject) => {
       const engines: BrowserEngine[] = [];
@@ -145,11 +95,6 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
 
       function evaluateNextPosition(engine: BrowserEngine) {
         const currentIndex = positionIndex;
-
-        if (signal.aborted) {
-          reject(new Error('aborted'));
-          return;
-        }
 
         if (positionIndex >= positions.length) {
           engine.terminate();
@@ -174,25 +119,16 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
           positions[currentIndex],
           options.engineDepth,
           options.multiPv,
-          3000,
+          options.engineTimeLimitMs,
           (line) => {
             const localProgress = line.depth === 0 ? 1 : line.depth / options.engineDepth;
-            const fractionalDone = done - localHits + localHits + localProgress;
-            options.onProgress?.({
-              done: fractionalDone,
-              total: positions.length,
-              cloudHits,
-              localHits
-            });
+            reportProgress(done + localProgress);
           }
         ).then((result) => {
-          if (signal.aborted) return;
-
           results[currentIndex] = result;
           localHits += 1;
           done += 1;
           reportProgress();
-
           evaluateNextPosition(engine);
         }).catch((error) => {
           reject(error);
@@ -204,6 +140,14 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       for (let i = 0; i < engineCount; i++) {
         const engine = new BrowserEngine(options.workerPath);
         engines.push(engine);
+
+        if (options.verbose) {
+          engine.onMessage(console.log);
+        }
+
+        engine.onError((error) => {
+          reject(new Error(error));
+        });
 
         evaluateNextPosition(engine);
       }
