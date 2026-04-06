@@ -55,8 +55,6 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       });
     }
 
-    let cutoffIndex = 0;
-
     for (let i = 0; i < positions.length; i++) {
       if (controller.signal.aborted) throw new Error('aborted');
 
@@ -68,7 +66,6 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
         results[i] = cloud.result;
         cloudHits += 1;
         done += 1;
-        cutoffIndex = i + 1;
         reportProgress();
       } catch {
         break;
