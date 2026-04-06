@@ -33,17 +33,34 @@ export type GameEvaluator = {
   abort: () => void;
 };
 
+function isMobileDevice() {
+  return (
+    typeof navigator !== 'undefined'
+    && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+}
+
 function getRecommendedEngineCount(maxEngineCount?: number) {
   const hardware = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
     ? navigator.hardwareConcurrency
     : 2;
 
-  const isMobile =
-    typeof navigator !== 'undefined'
-    && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-
+  const isMobile = isMobileDevice();
   const safeDefault = isMobile ? 1 : Math.min(2, Math.max(1, hardware - 1));
   return Math.max(1, Math.min(maxEngineCount ?? safeDefault, safeDefault));
+}
+
+function makePlaceholderResult(
+  fen: string,
+  previous: EngineEvalResult | null
+): EngineEvalResult {
+  return {
+    fen,
+    bestMove: null,
+    bestEvalCp: previous?.bestEvalCp ?? 0,
+    topLines: [],
+    cacheHit: false
+  };
 }
 
 export default function createGameEvaluator(options: GameEvaluatorOptions): GameEvaluator {
@@ -93,6 +110,19 @@ export default function createGameEvaluator(options: GameEvaluatorOptions): Game
       .slice(cutoffIndex);
 
     if (!remainingIndices.length) {
+      return { results, cloudHits, localHits };
+    }
+
+    if (isMobileDevice()) {
+      let previous = cutoffIndex > 0 ? results[cutoffIndex - 1] : null;
+
+      for (const index of remainingIndices) {
+        results[index] = makePlaceholderResult(positions[index], previous);
+        previous = results[index];
+        done += 1;
+      }
+
+      reportProgress();
       return { results, cloudHits, localHits };
     }
 
