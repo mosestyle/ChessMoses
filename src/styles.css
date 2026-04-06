@@ -48,6 +48,9 @@ button, textarea {
   gap: 16px;
   align-items: start;
 }
+.layout-two-col {
+  grid-template-columns: 1fr 1.8fr;
+}
 .panel {
   background: #171b26;
   border: 1px solid #2b3244;
@@ -150,6 +153,9 @@ textarea {
 .board-panel {
   position: sticky;
   top: 12px;
+}
+.board-panel-wide {
+  grid-column: span 1;
 }
 .move-card {
   background: #202633;
@@ -261,6 +267,19 @@ textarea {
 }
 .board-stack {
   position: relative;
+}
+.board-player-label {
+  text-align: center;
+  font-size: 1.2rem;
+  color: #f3f6ff;
+  margin: 8px 0 10px;
+}
+.board-player-top {
+  margin-top: 4px;
+}
+.board-player-bottom {
+  margin-top: 10px;
+  margin-bottom: 4px;
 }
 .board-wrap {
   width: 100%;
@@ -545,14 +564,43 @@ textarea {
   object-fit: contain;
 }
 
+.status-inline-card {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #111827;
+  border: 1px solid #334155;
+  color: #dbe5ff;
+}
+
+.tab-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.analysis-list-panel {
+  margin-top: 8px;
+}
+
+.analysis-list-scroll {
+  max-height: 520px;
+  overflow: auto;
+}
+
 @media (max-width: 1100px) {
   .layout {
+    grid-template-columns: 1fr;
+  }
+  .layout-two-col {
     grid-template-columns: 1fr;
   }
   .board-panel {
     position: static;
   }
 }
+
 @media (max-width: 640px) {
   .app-shell {
     padding: 12px;
