@@ -589,6 +589,16 @@ textarea {
   overflow: auto;
 }
 
+.report-scroll-panel {
+  margin-top: 8px;
+}
+
+.report-scroll {
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;
