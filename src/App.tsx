@@ -60,6 +60,13 @@ type SquareOverlayPosition = {
   top: number;
 };
 
+function getLiteWorkerPath() {
+  const basePath = import.meta.env.BASE_URL;
+  const pageOrigin = window.location.origin;
+  const wasmUrl = `${pageOrigin}${basePath}engine/stockfish-17-lite-single.wasm`;
+  return `${basePath}engine/stockfish-17-lite-single.js#${encodeURIComponent(wasmUrl)},worker`;
+}
+
 function getHeadersFromPgn(pgn: string): PgnHeaders {
   const read = (name: string, fallback: string) => {
     const regex = new RegExp('\\[' + name + '\\s+"([^"]*)"\\]');
@@ -345,7 +352,7 @@ export default function App() {
   const [previewBestMove, setPreviewBestMove] = useState(false);
 
   useEffect(() => {
-    const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17-lite-single.js';
+    const workerPath = getLiteWorkerPath();
     singleEngineRef.current = new BrowserEngine(workerPath);
 
     return () => {
@@ -656,8 +663,7 @@ export default function App() {
       }
 
       const timeline = buildMoveTimelineFromPgn(input);
-
-      const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17-lite-single.js';
+      const workerPath = getLiteWorkerPath();
 
       const evaluator = createGameEvaluator({
         initialFen: timeline[0]?.fenBefore || new Chess().fen(),
