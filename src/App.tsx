@@ -345,7 +345,7 @@ export default function App() {
   const [previewBestMove, setPreviewBestMove] = useState(false);
 
   useEffect(() => {
-    const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
+    const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17-lite-single.js';
     singleEngineRef.current = new BrowserEngine(workerPath);
 
     return () => {
@@ -659,7 +659,7 @@ export default function App() {
       const rawFens = [timeline[0]?.fenBefore, ...timeline.map((m) => m.fenAfter)].filter(Boolean) as string[];
       const fens = Array.from(new Set(rawFens));
 
-      const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17.1-lite-single-03e3232.js';
+      const workerPath = import.meta.env.BASE_URL + 'engine/stockfish-17-lite-single.js';
 
       const evaluator = createGameEvaluator({
         fens,
