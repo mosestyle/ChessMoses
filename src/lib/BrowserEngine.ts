@@ -5,14 +5,22 @@ export type EngineEvalResult = EnginePositionResult & {
   cacheHit: boolean;
 };
 
-type PendingRequest = {
-  resolve: (result: EngineEvalResult) => void;
-  reject: (error: Error) => void;
-  fen: string;
-  bestMove: string | null;
-  bestEvalCp: number | null;
-  topLines: { move: string; cp?: number; mate?: number }[];
-  timer: number | null;
+type EngineLine = {
+  move: string;
+  cp?: number;
+  mate?: number;
+};
+
+type EvaluateOptions = {
+  depth: number;
+  timeLimitMs?: number;
+  onEngineLine?: (line: {
+    depth: number;
+    index: number;
+    cp?: number;
+    mate?: number;
+    move?: string;
+  }) => void;
 };
 
 function synthesizeTerminalEngineResult(fen: string): EngineEvalResult | null {
@@ -46,19 +54,16 @@ function synthesizeTerminalEngineResult(fen: string): EngineEvalResult | null {
 
 export default class BrowserEngine {
   private worker: Worker;
-  private cache = new Map<string, EnginePositionResult>();
-  private pending: PendingRequest | null = null;
-  private currentFen = new Chess().fen();
+  private currentFen: string;
   private evaluating = false;
+  private cache = new Map<string, EnginePositionResult>();
 
   constructor(workerPath: string) {
     this.worker = new Worker(workerPath);
+    this.currentFen = new Chess().fen();
+
     this.worker.postMessage('uci');
     this.setPosition(this.currentFen);
-  }
-
-  private makeCacheKey(fen: string, depth: number, multiPv: number) {
-    return `${fen}__d${depth}__m${multiPv}`;
   }
 
   terminate() {
@@ -106,38 +111,69 @@ export default class BrowserEngine {
     this.cache.clear();
   }
 
-  async stop() {
-    if (!this.evaluating || !this.pending) return;
+  private makeCacheKey(fen: string, depth: number, multiPv: number, timeLimitMs?: number) {
+    return `${fen}__d${depth}__m${multiPv}__t${timeLimitMs || 0}`;
+  }
 
-    const resolve = this.pending.resolve;
-    const partial: EngineEvalResult = {
-      fen: this.pending.fen,
-      bestMove: this.pending.bestMove,
-      bestEvalCp: this.pending.bestEvalCp,
-      topLines: this.pending.topLines,
-      cacheHit: false
-    };
+  private consumeLogs(
+    command: string,
+    endCondition: (message: string) => boolean,
+    onLogReceived?: (message: string) => void
+  ): Promise<string[]> {
+    if (command) {
+      this.worker.postMessage(command);
+    }
+
+    const worker = this.worker;
+    const logMessages: string[] = [];
+
+    return new Promise((resolve, reject) => {
+      function onMessageReceived(event: MessageEvent) {
+        const message = String(event.data);
+
+        onLogReceived?.(message);
+        logMessages.push(message);
+
+        if (endCondition(message)) {
+          worker.removeEventListener('message', onMessageReceived);
+          worker.removeEventListener('error', onErrorReceived);
+          resolve(logMessages);
+        }
+      }
+
+      function onErrorReceived() {
+        worker.removeEventListener('message', onMessageReceived);
+        worker.removeEventListener('error', onErrorReceived);
+        reject(new Error('Engine worker failed during evaluation.'));
+      }
+
+      worker.addEventListener('message', onMessageReceived);
+      worker.addEventListener('error', onErrorReceived);
+    });
+  }
+
+  async stop() {
+    if (!this.evaluating) return;
 
     this.worker.postMessage('stop');
 
-    if (this.pending.timer !== null) {
-      window.clearTimeout(this.pending.timer);
+    try {
+      await this.consumeLogs('', (message) => message.startsWith('bestmove'));
+    } catch {
+      // ignore, caller will recreate or handle later
     }
 
-    this.worker.onmessage = null;
-    this.worker.onerror = null;
-    this.pending = null;
     this.evaluating = false;
-
-    resolve(partial);
   }
 
   async evaluate(
     fen: string,
     depth: number,
-    multiPv = 1
+    multiPv = 1,
+    timeLimitMs?: number,
+    onEngineLine?: EvaluateOptions['onEngineLine']
   ): Promise<EngineEvalResult> {
-    const cacheKey = this.makeCacheKey(fen, depth, multiPv);
+    const cacheKey = this.makeCacheKey(fen, depth, multiPv, timeLimitMs);
     const cached = this.cache.get(cacheKey);
 
     if (cached) {
@@ -163,136 +199,81 @@ export default class BrowserEngine {
     this.setPosition(fen);
     this.setLineCount(multiPv);
 
-    return new Promise<EngineEvalResult>((resolve, reject) => {
-      const pending: PendingRequest = {
-        resolve,
-        reject,
-        fen,
-        bestMove: null,
-        bestEvalCp: null,
-        topLines: [],
-        timer: null
-      };
+    const topLines: EngineLine[] = [];
+    let bestMove: string | null = null;
+    let bestEvalCp: number | null = null;
 
-      this.pending = pending;
-      this.evaluating = true;
+    const maxTimeArgument = timeLimitMs ? ` movetime ${timeLimitMs}` : '';
 
-      this.worker.onmessage = (event: MessageEvent) => {
-        if (!this.pending) return;
+    this.evaluating = true;
 
-        const line = String(event.data);
+    await this.consumeLogs(
+      `go depth ${depth}${maxTimeArgument}`,
+      (message) => message.startsWith('bestmove') || message.includes('depth 0'),
+      (message) => {
+        if (!message.startsWith('info depth')) return;
+        if (message.includes('currmove')) return;
 
-        if (line.startsWith('info depth') && !line.includes('currmove')) {
-          const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-          const cpMatch = line.match(/ score cp (-?\d+)/);
-          const mateMatch = line.match(/ score mate (-?\d+)/);
-          const mpvMatch = line.match(/ multipv (\d+)/);
+        const depthMatch = message.match(/(?<= depth )\d+/);
+        const indexMatch = message.match(/(?<= multipv )\d+/);
+        const scoreMatches = message.match(/ score (cp|mate) (-?\d+)/);
+        const moveMatch = message.match(/ pv ([a-h][1-8][a-h][1-8][qrbn]?)/);
 
-          const move = moveMatch ? moveMatch[1] : undefined;
-          const cp = cpMatch ? Number(cpMatch[1]) : undefined;
-          const mate = mateMatch ? Number(mateMatch[1]) : undefined;
-          const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
+        const infoDepth = parseInt(depthMatch?.[0] || '');
+        if (Number.isNaN(infoDepth)) return;
 
-          if (move) {
-            let normalizedCp = cp;
-            let normalizedMate = mate;
+        const infoIndex = parseInt(indexMatch?.[0] || '') || 1;
 
-            if (this.currentFen.includes(' b ')) {
-              if (typeof normalizedCp === 'number') normalizedCp = -normalizedCp;
-              if (typeof normalizedMate === 'number') normalizedMate = -normalizedMate;
-            }
+        let cp: number | undefined;
+        let mate: number | undefined;
 
-            this.pending.topLines[mpv - 1] = {
-              move,
-              cp: normalizedCp,
-              mate: normalizedMate
-            };
+        if (scoreMatches?.[1] === 'cp') {
+          cp = parseInt(scoreMatches[2]);
+          if (this.currentFen.includes(' b ')) cp = -cp;
+        } else if (scoreMatches?.[1] === 'mate') {
+          mate = parseInt(scoreMatches[2]);
+          if (this.currentFen.includes(' b ')) mate = -mate;
+        }
 
-            if (mpv === 1) {
-              if (typeof normalizedCp === 'number') this.pending.bestEvalCp = normalizedCp;
-              else if (typeof normalizedMate === 'number') this.pending.bestEvalCp = Math.sign(normalizedMate) * 10000;
-            }
+        const move = moveMatch?.[1];
+
+        if (move) {
+          topLines[infoIndex - 1] = { move, cp, mate };
+
+          if (infoIndex === 1) {
+            bestMove = move;
+            if (typeof cp === 'number') bestEvalCp = cp;
+            else if (typeof mate === 'number') bestEvalCp = Math.sign(mate) * 10000;
           }
         }
 
-        if (line.startsWith('bestmove') || line.includes('depth 0')) {
-          const parts = line.split(' ');
-          if (line.startsWith('bestmove')) {
-            this.pending.bestMove = parts.length > 1 ? parts[1] : null;
-          }
-
-          const result: EngineEvalResult = {
-            fen: this.pending.fen,
-            bestMove: this.pending.bestMove,
-            bestEvalCp: this.pending.bestEvalCp,
-            topLines: this.pending.topLines.filter(Boolean),
-            cacheHit: false
-          };
-
-          this.cache.set(cacheKey, {
-            fen: result.fen,
-            bestMove: result.bestMove,
-            bestEvalCp: result.bestEvalCp,
-            topLines: result.topLines
-          });
-
-          if (this.pending.timer !== null) {
-            window.clearTimeout(this.pending.timer);
-          }
-
-          const resolveNow = this.pending.resolve;
-          this.worker.onmessage = null;
-          this.worker.onerror = null;
-          this.pending = null;
-          this.evaluating = false;
-          resolveNow(result);
-        }
-      };
-
-      this.worker.onerror = () => {
-        if (!this.pending) return;
-
-        const rejectNow = this.pending.reject;
-
-        if (this.pending.timer !== null) {
-          window.clearTimeout(this.pending.timer);
-        }
-
-        this.worker.onmessage = null;
-        this.worker.onerror = null;
-        this.pending = null;
-        this.evaluating = false;
-
-        rejectNow(new Error('Engine worker failed during evaluation.'));
-      };
-
-      pending.timer = window.setTimeout(() => {
-        if (!this.pending) return;
-
-        const result: EngineEvalResult = {
-          fen: this.pending.fen,
-          bestMove: this.pending.bestMove,
-          bestEvalCp: this.pending.bestEvalCp,
-          topLines: this.pending.topLines.filter(Boolean),
-          cacheHit: false
-        };
-
-        this.cache.set(cacheKey, {
-          fen: result.fen,
-          bestMove: result.bestMove,
-          bestEvalCp: result.bestEvalCp,
-          topLines: result.topLines
+        onEngineLine?.({
+          depth: infoDepth,
+          index: infoIndex,
+          cp,
+          mate,
+          move
         });
+      }
+    );
 
-        const resolveNow = this.pending.resolve;
-        this.worker.onmessage = null;
-        this.worker.onerror = null;
-        this.pending = null;
-        this.evaluating = false;
-        resolveNow(result);
-      }, 8000);
+    this.evaluating = false;
 
-      this.worker.postMessage(`go depth ${depth}`);
+    const result: EngineEvalResult = {
+      fen,
+      bestMove,
+      bestEvalCp,
+      topLines: topLines.filter(Boolean),
+      cacheHit: false
+    };
+
+    this.cache.set(cacheKey, {
+      fen: result.fen,
+      bestMove: result.bestMove,
+      bestEvalCp: result.bestEvalCp,
+      topLines: result.topLines
     });
+
+    return result;
   }
 }
