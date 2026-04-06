@@ -5,22 +5,12 @@ export type EngineEvalResult = EnginePositionResult & {
   cacheHit: boolean;
 };
 
-type EngineLine = {
-  move: string;
+type ParsedEngineLine = {
+  depth: number;
+  index: number;
   cp?: number;
   mate?: number;
-};
-
-type EvaluateOptions = {
-  depth: number;
-  timeLimitMs?: number;
-  onEngineLine?: (line: {
-    depth: number;
-    index: number;
-    cp?: number;
-    mate?: number;
-    move?: string;
-  }) => void;
+  move?: string;
 };
 
 function synthesizeTerminalEngineResult(fen: string): EngineEvalResult | null {
@@ -54,16 +44,37 @@ function synthesizeTerminalEngineResult(fen: string): EngineEvalResult | null {
 
 export default class BrowserEngine {
   private worker: Worker;
-  private currentFen: string;
+  private currentFen = new Chess().fen();
   private evaluating = false;
   private cache = new Map<string, EnginePositionResult>();
 
   constructor(workerPath: string) {
     this.worker = new Worker(workerPath);
-    this.currentFen = new Chess().fen();
-
     this.worker.postMessage('uci');
     this.setPosition(this.currentFen);
+  }
+
+  onMessage(handler: (message: string) => void) {
+    this.worker.addEventListener('message', (event) => {
+      handler(String(event.data));
+    });
+
+    return this;
+  }
+
+  onError(handler: (error: string) => void) {
+    this.worker.addEventListener('error', (event) => {
+      const details = [
+        event.message || 'Unknown worker error',
+        event.filename ? `File: ${event.filename}` : '',
+        typeof event.lineno === 'number' ? `Line: ${event.lineno}` : '',
+        typeof event.colno === 'number' ? `Column: ${event.colno}` : ''
+      ].filter(Boolean).join(' | ');
+
+      handler(details || 'Unknown worker error');
+    });
+
+    return this;
   }
 
   terminate() {
@@ -152,7 +163,7 @@ export default class BrowserEngine {
           typeof event.colno === 'number' ? `Column: ${event.colno}` : ''
         ].filter(Boolean).join(' | ');
 
-        reject(new Error(details || 'Engine worker failed during evaluation.'));
+        reject(new Error(details || 'Unknown worker error'));
       }
 
       worker.addEventListener('message', onMessageReceived);
@@ -161,14 +172,14 @@ export default class BrowserEngine {
   }
 
   async stop() {
-    if (!this.evaluating) return;
-
     this.worker.postMessage('stop');
 
-    try {
-      await this.consumeLogs('', (message) => message.startsWith('bestmove'));
-    } catch {
-      // ignore
+    if (this.evaluating) {
+      try {
+        await this.consumeLogs('', (message) => message.startsWith('bestmove'));
+      } catch {
+        // ignore here
+      }
     }
 
     this.evaluating = false;
@@ -179,7 +190,7 @@ export default class BrowserEngine {
     depth: number,
     multiPv = 1,
     timeLimitMs?: number,
-    onEngineLine?: EvaluateOptions['onEngineLine']
+    onEngineLine?: (line: ParsedEngineLine) => void
   ): Promise<EngineEvalResult> {
     const cacheKey = this.makeCacheKey(fen, depth, multiPv, timeLimitMs);
     const cached = this.cache.get(cacheKey);
@@ -207,7 +218,7 @@ export default class BrowserEngine {
     this.setPosition(fen);
     this.setLineCount(multiPv);
 
-    const topLines: EngineLine[] = [];
+    const topLines: { move: string; cp?: number; mate?: number }[] = [];
     let bestMove: string | null = null;
     let bestEvalCp: number | null = null;
 
