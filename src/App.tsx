@@ -901,119 +901,121 @@ export default function App() {
               </div>
 
               {activeTab === 'report' ? (
-                <>
-                  {overviewSummary ? (
-                    <div className="overview-cards-grid">
-                      <div className="overview-card">
-                        <div className="overview-card-label">Worst move</div>
-                        <div className="overview-card-value">
-                          {overviewSummary.worstMove ? getMoveTitle(overviewSummary.worstMove) : '—'}
+                <div className="report-scroll-panel">
+                  <div className="report-scroll">
+                    {overviewSummary ? (
+                      <div className="overview-cards-grid">
+                        <div className="overview-card">
+                          <div className="overview-card-label">Worst move</div>
+                          <div className="overview-card-value">
+                            {overviewSummary.worstMove ? getMoveTitle(overviewSummary.worstMove) : '—'}
+                          </div>
+                          <div className="overview-card-sub">
+                            {overviewSummary.worstMove ? 'CPL ' + (overviewSummary.worstMove.centipawnLoss ?? '—') : ''}
+                          </div>
                         </div>
-                        <div className="overview-card-sub">
-                          {overviewSummary.worstMove ? 'CPL ' + (overviewSummary.worstMove.centipawnLoss ?? '—') : ''}
+
+                        <div className="overview-card">
+                          <div className="overview-card-label">Best move</div>
+                          <div className="overview-card-value">
+                            {overviewSummary.bestMove ? getMoveTitle(overviewSummary.bestMove) : '—'}
+                          </div>
+                          <div className="overview-card-sub">
+                            {overviewSummary.bestMove ? overviewSummary.bestMove.label : ''}
+                          </div>
+                        </div>
+
+                        <div className="overview-card">
+                          <div className="overview-card-label">Critical moments</div>
+                          <div className="overview-card-value">{overviewSummary.criticalMoments}</div>
+                          <div className="overview-card-sub">Critical, mistakes, blunders</div>
+                        </div>
+
+                        <div className="overview-card">
+                          <div className="overview-card-label">Opening</div>
+                          <div className="overview-card-value">{overviewSummary.opening}</div>
+                          <div className="overview-card-sub">Game opening</div>
+                        </div>
+
+                        <div className="overview-card">
+                          <div className="overview-card-label">Blunders</div>
+                          <div className="overview-card-value">{overviewSummary.blunders}</div>
+                          <div className="overview-card-sub">Total blunders</div>
+                        </div>
+
+                        <div className="overview-card">
+                          <div className="overview-card-label">Mistakes</div>
+                          <div className="overview-card-value">{overviewSummary.mistakes}</div>
+                          <div className="overview-card-sub">Total mistakes</div>
                         </div>
                       </div>
+                    ) : null}
 
-                      <div className="overview-card">
-                        <div className="overview-card-label">Best move</div>
-                        <div className="overview-card-value">
-                          {overviewSummary.bestMove ? getMoveTitle(overviewSummary.bestMove) : '—'}
+                    <div className="classification-summary-card">
+                      <div className="classification-summary-title">Accuracies</div>
+
+                      <div className="classification-accuracy-strip">
+                        <div className="classification-accuracy-left">{summary?.white.accuracy}%</div>
+                        <div className="classification-accuracy-right">{summary?.black.accuracy}%</div>
+                      </div>
+
+                      <div className="classification-summary-header">
+                        <span />
+                        <span>{headers.white}</span>
+                        <span />
+                        <span>{headers.black}</span>
+                      </div>
+
+                      {LABELS.map((label) => (
+                        <div key={label} className="classification-summary-row" style={{ color: getLabelColor(label) }}>
+                          <div className="classification-summary-name">{label}</div>
+                          <div className="classification-summary-count">{summary?.white.counts[label]}</div>
+                          <div className="classification-summary-icon-cell">
+                            <img
+                              src={getClassificationIcon(label)}
+                              alt={label}
+                              className="classification-summary-icon"
+                            />
+                          </div>
+                          <div className="classification-summary-count">{summary?.black.counts[label]}</div>
                         </div>
-                        <div className="overview-card-sub">
-                          {overviewSummary.bestMove ? overviewSummary.bestMove.label : ''}
-                        </div>
-                      </div>
-
-                      <div className="overview-card">
-                        <div className="overview-card-label">Critical moments</div>
-                        <div className="overview-card-value">{overviewSummary.criticalMoments}</div>
-                        <div className="overview-card-sub">Critical, mistakes, blunders</div>
-                      </div>
-
-                      <div className="overview-card">
-                        <div className="overview-card-label">Opening</div>
-                        <div className="overview-card-value">{overviewSummary.opening}</div>
-                        <div className="overview-card-sub">Game opening</div>
-                      </div>
-
-                      <div className="overview-card">
-                        <div className="overview-card-label">Blunders</div>
-                        <div className="overview-card-value">{overviewSummary.blunders}</div>
-                        <div className="overview-card-sub">Total blunders</div>
-                      </div>
-
-                      <div className="overview-card">
-                        <div className="overview-card-label">Mistakes</div>
-                        <div className="overview-card-value">{overviewSummary.mistakes}</div>
-                        <div className="overview-card-sub">Total mistakes</div>
-                      </div>
+                      ))}
                     </div>
-                  ) : null}
 
-                  <div className="classification-summary-card">
-                    <div className="classification-summary-title">Accuracies</div>
+                    <div className="eval-card graph-below-board">
+                      <div className="eval-card-title">Evaluation Graph</div>
+                      <svg
+                        ref={graphRef}
+                        viewBox={'0 0 ' + graphWidth + ' ' + graphHeight}
+                        className="eval-graph clickable-graph"
+                        preserveAspectRatio="none"
+                        onMouseMove={handleGraphMove}
+                        onMouseLeave={() => setHoveredGraphIndex(null)}
+                        onClick={handleGraphClick}
+                      >
+                        <rect x="0" y="0" width={graphWidth} height={graphHeight / 2} className="eval-top-zone" />
+                        <rect x="0" y={graphHeight / 2} width={graphWidth} height={graphHeight / 2} className="eval-bottom-zone" />
+                        <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
+                        {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
+                        {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
 
-                    <div className="classification-accuracy-strip">
-                      <div className="classification-accuracy-left">{summary?.white.accuracy}%</div>
-                      <div className="classification-accuracy-right">{summary?.black.accuracy}%</div>
+                        {hoveredGraphPoint ? (
+                          <>
+                            <line x1={hoveredGraphPoint.x} y1="0" x2={hoveredGraphPoint.x} y2={graphHeight} className="eval-hover-line" />
+                            <circle cx={hoveredGraphPoint.x} cy={hoveredGraphPoint.y} r="5" className="eval-hover-dot" />
+                          </>
+                        ) : null}
+
+                        {selectedGraphPoint ? (
+                          <>
+                            <line x1={selectedGraphPoint.x} y1="0" x2={selectedGraphPoint.x} y2={graphHeight} className="eval-marker-line" />
+                            <circle cx={selectedGraphPoint.x} cy={selectedGraphPoint.y} r="5" className="eval-marker-dot" />
+                          </>
+                        ) : null}
+                      </svg>
                     </div>
-
-                    <div className="classification-summary-header">
-                      <span />
-                      <span>{headers.white}</span>
-                      <span />
-                      <span>{headers.black}</span>
-                    </div>
-
-                    {LABELS.map((label) => (
-                      <div key={label} className="classification-summary-row" style={{ color: getLabelColor(label) }}>
-                        <div className="classification-summary-name">{label}</div>
-                        <div className="classification-summary-count">{summary?.white.counts[label]}</div>
-                        <div className="classification-summary-icon-cell">
-                          <img
-                            src={getClassificationIcon(label)}
-                            alt={label}
-                            className="classification-summary-icon"
-                          />
-                        </div>
-                        <div className="classification-summary-count">{summary?.black.counts[label]}</div>
-                      </div>
-                    ))}
                   </div>
-
-                  <div className="eval-card graph-below-board">
-                    <div className="eval-card-title">Evaluation Graph</div>
-                    <svg
-                      ref={graphRef}
-                      viewBox={'0 0 ' + graphWidth + ' ' + graphHeight}
-                      className="eval-graph clickable-graph"
-                      preserveAspectRatio="none"
-                      onMouseMove={handleGraphMove}
-                      onMouseLeave={() => setHoveredGraphIndex(null)}
-                      onClick={handleGraphClick}
-                    >
-                      <rect x="0" y="0" width={graphWidth} height={graphHeight / 2} className="eval-top-zone" />
-                      <rect x="0" y={graphHeight / 2} width={graphWidth} height={graphHeight / 2} className="eval-bottom-zone" />
-                      <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
-                      {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
-                      {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
-
-                      {hoveredGraphPoint ? (
-                        <>
-                          <line x1={hoveredGraphPoint.x} y1="0" x2={hoveredGraphPoint.x} y2={graphHeight} className="eval-hover-line" />
-                          <circle cx={hoveredGraphPoint.x} cy={hoveredGraphPoint.y} r="5" className="eval-hover-dot" />
-                        </>
-                      ) : null}
-
-                      {selectedGraphPoint ? (
-                        <>
-                          <line x1={selectedGraphPoint.x} y1="0" x2={selectedGraphPoint.x} y2={graphHeight} className="eval-marker-line" />
-                          <circle cx={selectedGraphPoint.x} cy={selectedGraphPoint.y} r="5" className="eval-marker-dot" />
-                        </>
-                      ) : null}
-                    </svg>
-                  </div>
-                </>
+                </div>
               ) : (
                 <div className="analysis-list-panel">
                   <div className="analysis-list-scroll move-list">
