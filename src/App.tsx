@@ -342,6 +342,8 @@ export default function App() {
   const [moveFilter, setMoveFilter] = useState<MoveFilter>('all');
   const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
   const [previewBestMove, setPreviewBestMove] = useState(false);
+  const [activeTab, setActiveTab] = useState<'report' | 'analysis'>('report');
+  const [showInputPanel, setShowInputPanel] = useState(true);
 
   useEffect(() => {
     const workerPath = import.meta.env.BASE_URL + 'engines/stockfish-17-lite-single.js';
@@ -638,6 +640,7 @@ export default function App() {
     setMoveFilter('all');
     setHoveredGraphIndex(null);
     setPreviewBestMove(false);
+    setActiveTab('report');
 
     try {
       if (!singleEngineRef.current) throw new Error('Engine not ready.');
@@ -706,14 +709,11 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Chess Analysis Lite</h1>
-          <p>
-            WintrChess-style cloud eval + local engines.
-          </p>
+          <p>WintrChess-style cloud eval + local engines.</p>
         </div>
-        <div className="status-pill">{state === 'running' ? 'Analyzing...' : status}</div>
       </header>
 
-      <main className="layout">
+      <main className="layout layout-two-col">
         <section className="panel">
           <div className="mode-row">
             <button
@@ -739,57 +739,70 @@ export default function App() {
             <button className="primary" onClick={runAnalysis} disabled={state === 'running'}>
               {state === 'running' ? 'Working...' : 'Run analysis'}
             </button>
+
+            <div className="scrubber-spacer" />
+            <button onClick={() => setShowInputPanel((v) => !v)}>
+              {showInputPanel ? 'Hide panel' : 'Show panel'}
+            </button>
           </div>
 
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={mode === 'pgn' ? 'Paste PGN here...' : 'Paste FEN here...'}
-          />
+          {showInputPanel ? (
+            <>
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={mode === 'pgn' ? 'Paste PGN here...' : 'Paste FEN here...'}
+              />
 
-          {mode === 'pgn' ? (
-            <div className="players-row">
-              <div className="player-box">
-                <div className="player-label">White</div>
-                <div className="player-name">{headers.white}</div>
-              </div>
-              <div className="player-box">
-                <div className="player-label">Black</div>
-                <div className="player-name">{headers.black}</div>
-              </div>
-            </div>
-          ) : null}
+              {mode === 'pgn' ? (
+                <div className="players-row">
+                  <div className="player-box">
+                    <div className="player-label">White</div>
+                    <div className="player-name">{headers.white}</div>
+                  </div>
+                  <div className="player-box">
+                    <div className="player-label">Black</div>
+                    <div className="player-name">{headers.black}</div>
+                  </div>
+                </div>
+              ) : null}
 
-          {state === 'running' ? (
-            <div className="progress-card">
-              <div className="progress-top">
-                <span>Progress</span>
-                <strong>{progressPercent}%</strong>
+              <div className="status-inline-card">
+                {state === 'running' ? status : status}
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: progressPercent + '%' }} />
-              </div>
-              <div className="helper-text">
-                {Math.floor(progress.done)} / {progress.total} positions analyzed
-              </div>
-              <div className="helper-text">
-                Cloud hits: {progress.cloudHits} • Local hits: {progress.localHits}
-              </div>
-            </div>
-          ) : null}
 
-          {error ? <div className="error-box">{error}</div> : null}
+              {state === 'running' ? (
+                <div className="progress-card">
+                  <div className="progress-top">
+                    <span>Progress</span>
+                    <strong>{progressPercent}%</strong>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: progressPercent + '%' }} />
+                  </div>
+                  <div className="helper-text">
+                    {Math.floor(progress.done)} / {progress.total} positions analyzed
+                  </div>
+                  <div className="helper-text">
+                    Cloud hits: {progress.cloudHits} • Local hits: {progress.localHits}
+                  </div>
+                </div>
+              ) : null}
 
-          {fenResult ? (
-            <div className="fen-card">
-              <strong>Best move:</strong> {fenResult.bestMove ?? '—'}
-              <br />
-              <strong>Eval:</strong> {fenResult.bestEvalCp ?? '—'}
-            </div>
+              {error ? <div className="error-box">{error}</div> : null}
+
+              {fenResult ? (
+                <div className="fen-card">
+                  <strong>Best move:</strong> {fenResult.bestMove ?? '—'}
+                  <br />
+                  <strong>Eval:</strong> {fenResult.bestEvalCp ?? '—'}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </section>
 
-        <section className="panel board-panel">
+        <section className="panel board-panel board-panel-wide">
           {selectedMove ? (
             <div className="move-card polished-move-card compact-move-card">
               <div className="move-card-topline">
@@ -822,6 +835,10 @@ export default function App() {
           )}
 
           <div className="board-stack">
+            <div className="board-player-label board-player-top">
+              {orientation === 'white' ? headers.black : headers.white}
+            </div>
+
             <div className="board-wrap" ref={boardWrapRef}>
               <Chessboard
                 id="analysis-board"
@@ -854,265 +871,184 @@ export default function App() {
                 />
               ) : null}
             </div>
+
+            <div className="board-player-label board-player-bottom">
+              {orientation === 'white' ? headers.white : headers.black}
+            </div>
           </div>
 
           {moves.length ? (
-            <div className="scrubber">
-              <button onClick={() => setCurrentPly(0)}>Start</button>
-              <button onClick={() => setCurrentPly((v) => Math.max(0, v - 1))}>Prev</button>
-              <span>{currentPly} / {moves.length}</span>
-              <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>Next</button>
-              <button onClick={() => setCurrentPly(moves.length)}>End</button>
-              <div className="scrubber-spacer" />
-              <button onClick={() => setOrientation((prev) => (prev === 'white' ? 'black' : 'white'))}>
-                Rotate board
-              </button>
-            </div>
-          ) : null}
-
-          {moves.length ? (
-            <div className="eval-card graph-below-board">
-              <div className="eval-card-title">Evaluation Graph</div>
-              <svg
-                ref={graphRef}
-                viewBox={'0 0 ' + graphWidth + ' ' + graphHeight}
-                className="eval-graph clickable-graph"
-                preserveAspectRatio="none"
-                onMouseMove={handleGraphMove}
-                onMouseLeave={() => setHoveredGraphIndex(null)}
-                onClick={handleGraphClick}
-              >
-                <rect x="0" y="0" width={graphWidth} height={graphHeight / 2} className="eval-top-zone" />
-                <rect x="0" y={graphHeight / 2} width={graphWidth} height={graphHeight / 2} className="eval-bottom-zone" />
-                <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
-                {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
-                {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
-
-                {hoveredGraphPoint ? (
-                  <>
-                    <line
-                      x1={hoveredGraphPoint.x}
-                      y1="0"
-                      x2={hoveredGraphPoint.x}
-                      y2={graphHeight}
-                      className="eval-hover-line"
-                    />
-                    <circle
-                      cx={hoveredGraphPoint.x}
-                      cy={hoveredGraphPoint.y}
-                      r="5"
-                      className="eval-hover-dot"
-                    />
-                  </>
-                ) : null}
-
-                {selectedGraphPoint ? (
-                  <>
-                    <line
-                      x1={selectedGraphPoint.x}
-                      y1="0"
-                      x2={selectedGraphPoint.x}
-                      y2={graphHeight}
-                      className="eval-marker-line"
-                    />
-                    <circle
-                      cx={selectedGraphPoint.x}
-                      cy={selectedGraphPoint.y}
-                      r="5"
-                      className="eval-marker-dot"
-                    />
-                  </>
-                ) : null}
-              </svg>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="panel">
-          {summary ? (
             <>
-              {overviewSummary ? (
-                <div className="overview-cards-grid">
-                  <div className="overview-card">
-                    <div className="overview-card-label">Worst move</div>
-                    <div className="overview-card-value">
-                      {overviewSummary.worstMove ? getMoveTitle(overviewSummary.worstMove) : '—'}
-                    </div>
-                    <div className="overview-card-sub">
-                      {overviewSummary.worstMove ? 'CPL ' + (overviewSummary.worstMove.centipawnLoss ?? '—') : ''}
-                    </div>
-                  </div>
-
-                  <div className="overview-card">
-                    <div className="overview-card-label">Best move</div>
-                    <div className="overview-card-value">
-                      {overviewSummary.bestMove ? getMoveTitle(overviewSummary.bestMove) : '—'}
-                    </div>
-                    <div className="overview-card-sub">
-                      {overviewSummary.bestMove ? overviewSummary.bestMove.label : ''}
-                    </div>
-                  </div>
-
-                  <div className="overview-card">
-                    <div className="overview-card-label">Critical moments</div>
-                    <div className="overview-card-value">{overviewSummary.criticalMoments}</div>
-                    <div className="overview-card-sub">Critical, mistakes, blunders</div>
-                  </div>
-
-                  <div className="overview-card">
-                    <div className="overview-card-label">Opening</div>
-                    <div className="overview-card-value">{overviewSummary.opening}</div>
-                    <div className="overview-card-sub">Game opening</div>
-                  </div>
-
-                  <div className="overview-card">
-                    <div className="overview-card-label">Blunders</div>
-                    <div className="overview-card-value">{overviewSummary.blunders}</div>
-                    <div className="overview-card-sub">Total blunders</div>
-                  </div>
-
-                  <div className="overview-card">
-                    <div className="overview-card-label">Mistakes</div>
-                    <div className="overview-card-value">{overviewSummary.mistakes}</div>
-                    <div className="overview-card-sub">Total mistakes</div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="summary-grid">
-                <div className="summary-card">
-                  <h3>Opening</h3>
-                  <p>{summary.opening ? summary.eco + ' • ' + summary.opening : 'Unknown'}</p>
-                </div>
-                <div className="summary-card">
-                  <h3>{headers.white}</h3>
-                  <p>{summary.white.accuracy}%</p>
-                </div>
-                <div className="summary-card">
-                  <h3>{headers.black}</h3>
-                  <p>{summary.black.accuracy}%</p>
-                </div>
+              <div className="scrubber">
+                <button onClick={() => setCurrentPly(0)}>Start</button>
+                <button onClick={() => setCurrentPly((v) => Math.max(0, v - 1))}>Prev</button>
+                <span>{currentPly} / {moves.length}</span>
+                <button onClick={() => setCurrentPly((v) => Math.min(moves.length, v + 1))}>Next</button>
+                <button onClick={() => setCurrentPly(moves.length)}>End</button>
+                <div className="scrubber-spacer" />
+                <button onClick={() => setOrientation((prev) => (prev === 'white' ? 'black' : 'white'))}>
+                  Rotate board
+                </button>
               </div>
 
-              <div className="accuracy-strip-card">
-                <div className="accuracy-strip-title">Accuracies</div>
-                <div className="accuracy-strip">
-                  <div className="accuracy-left" style={{ width: summary.white.accuracy + '%' }}>
-                    {summary.white.accuracy}%
-                  </div>
-                  <div className="accuracy-right" style={{ width: summary.black.accuracy + '%' }}>
-                    {summary.black.accuracy}%
-                  </div>
-                </div>
-                <div className="accuracy-names">
-                  <span>{headers.white}</span>
-                  <span>{headers.black}</span>
-                </div>
+              <div className="tab-row">
+                <button className={activeTab === 'report' ? 'active' : ''} onClick={() => setActiveTab('report')}>
+                  Report
+                </button>
+                <button className={activeTab === 'analysis' ? 'active' : ''} onClick={() => setActiveTab('analysis')}>
+                  Analysis
+                </button>
               </div>
 
-              <div className="move-list-toolbar">
-                <div className="jump-group">
-                  <button className="toolbar-btn danger" onClick={() => jumpToNextLabel('Blunder')}>
-                    Blunders ({countsSummary.blunders})
-                  </button>
-                  <button className="toolbar-btn warning" onClick={() => jumpToNextLabel('Mistake')}>
-                    Mistakes ({countsSummary.mistakes})
-                  </button>
-                  <button className="toolbar-btn caution" onClick={() => jumpToNextLabel('Inaccuracy')}>
-                    Inaccuracies ({countsSummary.inaccuracies})
-                  </button>
-                </div>
-
-                <div className="filter-group">
-                  <button
-                    className={'toolbar-btn ' + (moveFilter === 'all' ? 'active-filter' : '')}
-                    onClick={() => setMoveFilter('all')}
-                  >
-                    All
-                  </button>
-                  <button
-                    className={'toolbar-btn ' + (moveFilter === 'bad' ? 'active-filter' : '')}
-                    onClick={() => setMoveFilter('bad')}
-                  >
-                    Bad moves
-                  </button>
-                  <button
-                    className={'toolbar-btn ' + (moveFilter === 'great' ? 'active-filter' : '')}
-                    onClick={() => setMoveFilter('great')}
-                  >
-                    Great moves
-                  </button>
-                </div>
-              </div>
-
-              <div className="classification-summary-card">
-                <div className="classification-summary-title">Accuracies</div>
-
-                <div className="classification-accuracy-strip">
-                  <div className="classification-accuracy-left">{summary.white.accuracy}%</div>
-                  <div className="classification-accuracy-right">{summary.black.accuracy}%</div>
-                </div>
-
-                <div className="classification-summary-header">
-                  <span />
-                  <span>{headers.white}</span>
-                  <span />
-                  <span>{headers.black}</span>
-                </div>
-
-                {LABELS.map((label) => (
-                  <div key={label} className="classification-summary-row" style={{ color: getLabelColor(label) }}>
-                    <div className="classification-summary-name">{label}</div>
-                    <div className="classification-summary-count">{summary.white.counts[label]}</div>
-                    <div className="classification-summary-icon-cell">
-                      <img
-                        src={getClassificationIcon(label)}
-                        alt={label}
-                        className="classification-summary-icon"
-                      />
-                    </div>
-                    <div className="classification-summary-count">{summary.black.counts[label]}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="move-list">
-                {filteredMoves.map((move) => {
-                  const originalIndex = moves.findIndex((m) => m.ply === move.ply && m.uci === move.uci);
-                  return (
-                    <button
-                      key={move.ply + '-' + move.uci}
-                      className={'move-item ' + (currentPly === originalIndex + 1 ? 'selected' : '')}
-                      onClick={() => setCurrentPly(originalIndex + 1)}
-                    >
-                      <div className="move-left">
-                        <img
-                          src={getClassificationIcon(move.label)}
-                          alt={move.label}
-                          className="move-list-icon-img"
-                        />
-                        <div>
-                          <strong>
-                            {move.moveNumber}
-                            {move.color === 'w' ? '.' : '...'} {move.san}
-                          </strong>
-                          <div className="mini">
-                            {move.label} • Best: {move.bestMove ?? '—'} • CPL: {move.centipawnLoss ?? '—'}
-                          </div>
+              {activeTab === 'report' ? (
+                <>
+                  {overviewSummary ? (
+                    <div className="overview-cards-grid">
+                      <div className="overview-card">
+                        <div className="overview-card-label">Worst move</div>
+                        <div className="overview-card-value">
+                          {overviewSummary.worstMove ? getMoveTitle(overviewSummary.worstMove) : '—'}
+                        </div>
+                        <div className="overview-card-sub">
+                          {overviewSummary.worstMove ? 'CPL ' + (overviewSummary.worstMove.centipawnLoss ?? '—') : ''}
                         </div>
                       </div>
-                    </button>
-                  );
-                })}
 
-                {!filteredMoves.length ? (
-                  <div className="empty-state">No moves match this filter.</div>
-                ) : null}
-              </div>
+                      <div className="overview-card">
+                        <div className="overview-card-label">Best move</div>
+                        <div className="overview-card-value">
+                          {overviewSummary.bestMove ? getMoveTitle(overviewSummary.bestMove) : '—'}
+                        </div>
+                        <div className="overview-card-sub">
+                          {overviewSummary.bestMove ? overviewSummary.bestMove.label : ''}
+                        </div>
+                      </div>
+
+                      <div className="overview-card">
+                        <div className="overview-card-label">Critical moments</div>
+                        <div className="overview-card-value">{overviewSummary.criticalMoments}</div>
+                        <div className="overview-card-sub">Critical, mistakes, blunders</div>
+                      </div>
+
+                      <div className="overview-card">
+                        <div className="overview-card-label">Opening</div>
+                        <div className="overview-card-value">{overviewSummary.opening}</div>
+                        <div className="overview-card-sub">Game opening</div>
+                      </div>
+
+                      <div className="overview-card">
+                        <div className="overview-card-label">Blunders</div>
+                        <div className="overview-card-value">{overviewSummary.blunders}</div>
+                        <div className="overview-card-sub">Total blunders</div>
+                      </div>
+
+                      <div className="overview-card">
+                        <div className="overview-card-label">Mistakes</div>
+                        <div className="overview-card-value">{overviewSummary.mistakes}</div>
+                        <div className="overview-card-sub">Total mistakes</div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="classification-summary-card">
+                    <div className="classification-summary-title">Accuracies</div>
+
+                    <div className="classification-accuracy-strip">
+                      <div className="classification-accuracy-left">{summary?.white.accuracy}%</div>
+                      <div className="classification-accuracy-right">{summary?.black.accuracy}%</div>
+                    </div>
+
+                    <div className="classification-summary-header">
+                      <span />
+                      <span>{headers.white}</span>
+                      <span />
+                      <span>{headers.black}</span>
+                    </div>
+
+                    {LABELS.map((label) => (
+                      <div key={label} className="classification-summary-row" style={{ color: getLabelColor(label) }}>
+                        <div className="classification-summary-name">{label}</div>
+                        <div className="classification-summary-count">{summary?.white.counts[label]}</div>
+                        <div className="classification-summary-icon-cell">
+                          <img
+                            src={getClassificationIcon(label)}
+                            alt={label}
+                            className="classification-summary-icon"
+                          />
+                        </div>
+                        <div className="classification-summary-count">{summary?.black.counts[label]}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="eval-card graph-below-board">
+                    <div className="eval-card-title">Evaluation Graph</div>
+                    <svg
+                      ref={graphRef}
+                      viewBox={'0 0 ' + graphWidth + ' ' + graphHeight}
+                      className="eval-graph clickable-graph"
+                      preserveAspectRatio="none"
+                      onMouseMove={handleGraphMove}
+                      onMouseLeave={() => setHoveredGraphIndex(null)}
+                      onClick={handleGraphClick}
+                    >
+                      <rect x="0" y="0" width={graphWidth} height={graphHeight / 2} className="eval-top-zone" />
+                      <rect x="0" y={graphHeight / 2} width={graphWidth} height={graphHeight / 2} className="eval-bottom-zone" />
+                      <line x1="0" y1={graphHeight / 2} x2={graphWidth} y2={graphHeight / 2} className="eval-midline" />
+                      {evalAreaPath ? <path d={evalAreaPath} className="eval-area" /> : null}
+                      {evalLinePath ? <path d={evalLinePath} className="eval-line" /> : null}
+
+                      {hoveredGraphPoint ? (
+                        <>
+                          <line x1={hoveredGraphPoint.x} y1="0" x2={hoveredGraphPoint.x} y2={graphHeight} className="eval-hover-line" />
+                          <circle cx={hoveredGraphPoint.x} cy={hoveredGraphPoint.y} r="5" className="eval-hover-dot" />
+                        </>
+                      ) : null}
+
+                      {selectedGraphPoint ? (
+                        <>
+                          <line x1={selectedGraphPoint.x} y1="0" x2={selectedGraphPoint.x} y2={graphHeight} className="eval-marker-line" />
+                          <circle cx={selectedGraphPoint.x} cy={selectedGraphPoint.y} r="5" className="eval-marker-dot" />
+                        </>
+                      ) : null}
+                    </svg>
+                  </div>
+                </>
+              ) : (
+                <div className="analysis-list-panel">
+                  <div className="analysis-list-scroll move-list">
+                    {moves.map((move) => {
+                      const originalIndex = moves.findIndex((m) => m.ply === move.ply && m.uci === move.uci);
+                      return (
+                        <button
+                          key={move.ply + '-' + move.uci}
+                          className={'move-item ' + (currentPly === originalIndex + 1 ? 'selected' : '')}
+                          onClick={() => setCurrentPly(originalIndex + 1)}
+                        >
+                          <div className="move-left">
+                            <img
+                              src={getClassificationIcon(move.label)}
+                              alt={move.label}
+                              className="move-list-icon-img"
+                            />
+                            <div>
+                              <strong>
+                                {move.moveNumber}
+                                {move.color === 'w' ? '.' : '...'} {move.san}
+                              </strong>
+                              <div className="mini">
+                                {move.label} • Best: {move.bestMove ?? '—'} • CPL: {move.centipawnLoss ?? '—'}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
-          ) : (
-            <div className="empty-state">Run a PGN analysis to see the move report here.</div>
-          )}
+          ) : null}
         </section>
       </main>
     </div>
