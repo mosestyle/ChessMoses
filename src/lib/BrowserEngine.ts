@@ -9,8 +9,6 @@ type PendingRequest = {
   resolve: (result: EngineEvalResult) => void;
   reject: (error: Error) => void;
   fen: string;
-  depth: number;
-  multiPv: number;
   bestMove: string | null;
   bestEvalCp: number | null;
   topLines: { move: string; cp?: number; mate?: number }[];
@@ -50,36 +48,68 @@ export default class BrowserEngine {
   private worker: Worker;
   private cache = new Map<string, EnginePositionResult>();
   private pending: PendingRequest | null = null;
+  private currentFen = new Chess().fen();
+  private evaluating = false;
 
   constructor(workerPath: string) {
     this.worker = new Worker(workerPath);
     this.worker.postMessage('uci');
+    this.setPosition(this.currentFen);
   }
 
   private makeCacheKey(fen: string, depth: number, multiPv: number) {
     return `${fen}__d${depth}__m${multiPv}`;
   }
 
-  private cleanupPending() {
-    if (!this.pending) return;
+  terminate() {
+    try {
+      this.worker.postMessage('quit');
+    } catch {
+      this.worker.terminate();
+    }
+  }
 
-    if (this.pending.timer !== null) {
-      window.clearTimeout(this.pending.timer);
+  setOption(option: string, value: string) {
+    this.worker.postMessage(`setoption name ${option} value ${value}`);
+    return this;
+  }
+
+  setLineCount(lines: number) {
+    this.setOption('MultiPV', String(lines));
+    return this;
+  }
+
+  setThreadCount(threads: number) {
+    this.setOption('Threads', String(threads));
+    return this;
+  }
+
+  setPosition(fen: string, uciMoves?: string[]) {
+    if (uciMoves?.length) {
+      this.worker.postMessage(`position fen ${fen} moves ${uciMoves.join(' ')}`);
+
+      const board = new Chess(fen);
+      for (const uciMove of uciMoves) {
+        board.move(uciMove);
+      }
+
+      this.currentFen = board.fen();
+      return this;
     }
 
-    this.worker.onmessage = null;
-    this.worker.onerror = null;
-    this.pending = null;
+    this.worker.postMessage(`position fen ${fen}`);
+    this.currentFen = fen;
+    return this;
   }
 
-  terminate() {
-    this.cleanupPending();
-    this.worker.terminate();
+  clearCache() {
+    this.cache.clear();
   }
 
-  stop() {
-    if (!this.pending) return;
+  async stop() {
+    if (!this.evaluating || !this.pending) return;
 
+    const resolve = this.pending.resolve;
     const partial: EngineEvalResult = {
       fen: this.pending.fen,
       bestMove: this.pending.bestMove,
@@ -88,14 +118,18 @@ export default class BrowserEngine {
       cacheHit: false
     };
 
-    const resolve = this.pending.resolve;
     this.worker.postMessage('stop');
-    this.cleanupPending();
-    resolve(partial);
-  }
 
-  clearCache() {
-    this.cache.clear();
+    if (this.pending.timer !== null) {
+      window.clearTimeout(this.pending.timer);
+    }
+
+    this.worker.onmessage = null;
+    this.worker.onerror = null;
+    this.pending = null;
+    this.evaluating = false;
+
+    resolve(partial);
   }
 
   async evaluate(
@@ -124,15 +158,16 @@ export default class BrowserEngine {
       return terminal;
     }
 
-    this.stop();
+    await this.stop();
+
+    this.setPosition(fen);
+    this.setLineCount(multiPv);
 
     return new Promise<EngineEvalResult>((resolve, reject) => {
       const pending: PendingRequest = {
         resolve,
         reject,
         fen,
-        depth,
-        multiPv,
         bestMove: null,
         bestEvalCp: null,
         topLines: [],
@@ -140,13 +175,14 @@ export default class BrowserEngine {
       };
 
       this.pending = pending;
+      this.evaluating = true;
 
       this.worker.onmessage = (event: MessageEvent) => {
         if (!this.pending) return;
 
         const line = String(event.data);
 
-        if (line.startsWith('info ')) {
+        if (line.startsWith('info depth') && !line.includes('currmove')) {
           const moveMatch = line.match(/ pv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
           const cpMatch = line.match(/ score cp (-?\d+)/);
           const mateMatch = line.match(/ score mate (-?\d+)/);
@@ -158,18 +194,32 @@ export default class BrowserEngine {
           const mpv = mpvMatch ? Number(mpvMatch[1]) : 1;
 
           if (move) {
-            this.pending.topLines[mpv - 1] = { move, cp, mate };
+            let normalizedCp = cp;
+            let normalizedMate = mate;
+
+            if (this.currentFen.includes(' b ')) {
+              if (typeof normalizedCp === 'number') normalizedCp = -normalizedCp;
+              if (typeof normalizedMate === 'number') normalizedMate = -normalizedMate;
+            }
+
+            this.pending.topLines[mpv - 1] = {
+              move,
+              cp: normalizedCp,
+              mate: normalizedMate
+            };
 
             if (mpv === 1) {
-              if (typeof cp === 'number') this.pending.bestEvalCp = cp;
-              else if (typeof mate === 'number') this.pending.bestEvalCp = Math.sign(mate) * 10000;
+              if (typeof normalizedCp === 'number') this.pending.bestEvalCp = normalizedCp;
+              else if (typeof normalizedMate === 'number') this.pending.bestEvalCp = Math.sign(normalizedMate) * 10000;
             }
           }
         }
 
-        if (line.startsWith('bestmove')) {
+        if (line.startsWith('bestmove') || line.includes('depth 0')) {
           const parts = line.split(' ');
-          this.pending.bestMove = parts.length > 1 ? parts[1] : null;
+          if (line.startsWith('bestmove')) {
+            this.pending.bestMove = parts.length > 1 ? parts[1] : null;
+          }
 
           const result: EngineEvalResult = {
             fen: this.pending.fen,
@@ -186,16 +236,33 @@ export default class BrowserEngine {
             topLines: result.topLines
           });
 
+          if (this.pending.timer !== null) {
+            window.clearTimeout(this.pending.timer);
+          }
+
           const resolveNow = this.pending.resolve;
-          this.cleanupPending();
+          this.worker.onmessage = null;
+          this.worker.onerror = null;
+          this.pending = null;
+          this.evaluating = false;
           resolveNow(result);
         }
       };
 
       this.worker.onerror = () => {
         if (!this.pending) return;
+
         const rejectNow = this.pending.reject;
-        this.cleanupPending();
+
+        if (this.pending.timer !== null) {
+          window.clearTimeout(this.pending.timer);
+        }
+
+        this.worker.onmessage = null;
+        this.worker.onerror = null;
+        this.pending = null;
+        this.evaluating = false;
+
         rejectNow(new Error('Engine worker failed during evaluation.'));
       };
 
@@ -218,14 +285,13 @@ export default class BrowserEngine {
         });
 
         const resolveNow = this.pending.resolve;
-        this.cleanupPending();
+        this.worker.onmessage = null;
+        this.worker.onerror = null;
+        this.pending = null;
+        this.evaluating = false;
         resolveNow(result);
-      }, 6500);
+      }, 8000);
 
-      this.worker.postMessage('stop');
-      this.worker.postMessage('ucinewgame');
-      this.worker.postMessage(`setoption name MultiPV value ${multiPv}`);
-      this.worker.postMessage(`position fen ${fen}`);
       this.worker.postMessage(`go depth ${depth}`);
     });
   }
